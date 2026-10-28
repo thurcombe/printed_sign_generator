@@ -1,0 +1,82 @@
+name: Build & Push Image
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ "*" ]
+  schedule:
+    - cron: "0 0 * * 0"   # every Sunday at midnight UTC: pick up Alpine package updates
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build printed_sign_generator
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      IMAGE: ${{ secrets.DOCKER_USERNAME }}/printed_sign_generator
+      # Push only from main/tags/schedule, and only when the Docker Hub secrets exist.
+      PUSH: ${{ github.event_name != 'pull_request' && secrets.DOCKER_USERNAME != '' && secrets.DOCKER_TOKEN != '' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        if: env.PUSH == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value={{date 'YYYYMMDD-HHmmss'}}
+            type=sha,format=short
+            type=ref,event=tag
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.title=printed_sign_generator
+            org.opencontainers.image.description=Web UI that renders parametric 3D-printable signs with OpenSCAD
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Build & Push (amd64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          push: ${{ env.PUSH == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          pull: true
+          # The OpenSCAD compile stage is the slow part; reuse it from the Actions cache
+          # except on the weekly scheduled run, which rebuilds everything from scratch.
+          no-cache: ${{ github.event_name == 'schedule' }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test the built image
+        if: env.PUSH == 'true'
+        run: |
+          set -euo pipefail
+          TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
+          docker run -d --name sign --read-only --tmpfs /tmp -p 8000:8000 "$TAG"
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:8000/healthz && break; sleep 1; done
+          curl -sf -o /tmp/sign.stl -F 'lines=HELLO' -F show_icon=true http://127.0.0.1:8000/generate
+          test -s /tmp/sign.stl
+          docker rm -f sign

@@ -133,6 +133,15 @@ To run the web app without a container (needs `openscad` on the PATH):
 ./.venv/bin/uvicorn web.app:app --reload
 ```
 
+## Published image
+
+GitHub Actions (`.github/workflows/docker.yml`) builds the image on every
+push to `main`, on tags, weekly, and on pull requests (build only), and
+pushes it to Docker Hub as `<DOCKER_USERNAME>/printed_sign_generator` with
+the tags `latest`, a date stamp, the short commit SHA and any git tag. The
+workflow needs two repository secrets, `DOCKER_USERNAME` and `DOCKER_TOKEN`;
+without them it still builds but skips the push.
+
 ## Setting up the Python environment again
 
 If `.venv` is missing or broken:
