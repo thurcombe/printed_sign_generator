@@ -1,0 +1,7 @@
+# local python environment for trace_silhouette.py (rebuild: see README)
+.venv/
+__pycache__/
+# generated print files
+*.stl
+*.3mf
+*.gcode
