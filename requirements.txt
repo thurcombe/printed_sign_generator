@@ -1,5 +1,1 @@
-numpy
-scipy
-scikit-image
-shapely
 pillow

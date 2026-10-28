@@ -1,0 +1,61 @@
+Make the NULLGL (no OpenGL) build of 2021.01 compile again: shaderinfo_t
+is needed by renderer.h even without OpenCSG, the NULLGL stubs had drifted
+from the ThrownTogetherRenderer declarations, and allow passing -DVERSION
+so the binary reports 2021.01 instead of the build date.
+
+diff -ruN a/CMakeLists.txt b/CMakeLists.txt
+--- a/CMakeLists.txt	2026-10-28 14:39:42.420737601 +0000
++++ b/CMakeLists.txt	2026-10-28 14:39:42.422602447 +0000
+@@ -345,7 +345,9 @@
+ #
+ # Version
+ #
+-string(TIMESTAMP VERSION "%Y.%m.%d")
++if(NOT DEFINED VERSION)
++  string(TIMESTAMP VERSION "%Y.%m.%d")
++endif()
+ string(REPLACE "-" ";" SPLITVERSION ${VERSION})
+ list(GET SPLITVERSION 0 OPENSCAD_SHORTVERSION)
+ string(REGEX MATCHALL "^[0-9]+|[0-9]+|[0-9]+$" VERSIONLIST "${OPENSCAD_SHORTVERSION}")
+diff -ruN a/src/GLView.h b/src/GLView.h
+--- a/src/GLView.h	2026-10-28 14:39:42.419043846 +0000
++++ b/src/GLView.h	2026-10-28 14:39:42.421707898 +0000
+@@ -71,8 +71,7 @@
+ 	bool showcrosshairs;
+ 	bool showscale;
+ 
+-#ifdef ENABLE_OPENCSG
+-	/// Shader attribute identifiers
++	/// Shader attribute identifiers (plain data, so also available for NULLGL builds)
+ 	struct shaderinfo_t {
+ 		enum shader_type_t {
+ 			NONE,
+@@ -95,6 +94,7 @@
+ 
+ 	};
+ 
++#ifdef ENABLE_OPENCSG
+ 	shaderinfo_t shaderinfo;
+ 	bool is_opencsg_capable;
+ 	bool has_shaders;
+diff -ruN a/src/NULLGL.cc b/src/NULLGL.cc
+--- a/src/NULLGL.cc	2026-10-28 14:39:42.419903676 +0000
++++ b/src/NULLGL.cc	2026-10-28 14:39:42.421729352 +0000
+@@ -18,14 +18,15 @@
+                         shared_ptr<CSGProducts> highlight_products,
+                         shared_ptr<CSGProducts> background_products) {}
+ void ThrownTogetherRenderer::draw(bool showfaces, bool showedges) const {};
++void ThrownTogetherRenderer::draw_with_shader(const GLView::shaderinfo_t *, bool showedges) const {}
+ BoundingBox ThrownTogetherRenderer::getBoundingBox() const
+ {
+ 	assert(false && "not implemented");
+ 	return BoundingBox();
+ }
+-void ThrownTogetherRenderer::renderCSGProducts(const CSGProducts &products, bool highlight_mode, bool background_mode, bool showedges, 
++void ThrownTogetherRenderer::renderCSGProducts(const CSGProducts &products, const GLView::shaderinfo_t *, bool highlight_mode, bool background_mode, bool showedges,
+                         bool fberror) const {}
+-void ThrownTogetherRenderer::renderChainObject(const class CSGChainObject &csgobj, bool highlight_mode,
++void ThrownTogetherRenderer::renderChainObject(const class CSGChainObject &csgobj, const GLView::shaderinfo_t *, bool highlight_mode,
+                         bool background_mode, bool showedges, bool fberror, OpenSCADOperator type) const {}
+ 
+ #include "CGALRenderer.h"
