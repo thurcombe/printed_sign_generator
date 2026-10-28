@@ -23,7 +23,20 @@ MAX_UPLOAD = 10 * 1024 * 1024
 HERE = Path(__file__).resolve().parent
 
 app = FastAPI(title='Printed sign generator')
-app.mount('/static', StaticFiles(directory=HERE / 'static'), name='static')
+
+
+class NoCacheStatic(StaticFiles):
+    """Browsers must revalidate static files, so a rebuilt container never serves a stale app.js."""
+    def file_response(self, *args, **kwargs):
+        resp = super().file_response(*args, **kwargs)
+        resp.headers['Cache-Control'] = 'no-cache'
+        return resp
+
+
+app.mount('/static', NoCacheStatic(directory=HERE / 'static'), name='static')
+# Version tag for the script URL, from the file's own hash, so a changed app.js is always refetched.
+import hashlib
+ASSET_VERSION = hashlib.sha1((HERE / 'static' / 'app.js').read_bytes()).hexdigest()[:10]
 
 
 def installed_fonts():
@@ -75,7 +88,8 @@ def parse_holes(s: str, width: float):
 @app.get('/', response_class=HTMLResponse)
 def index():
     html = (HERE / 'static' / 'index.html').read_text()
-    return html.replace('__FONTS__', json.dumps(FONTS))
+    return HTMLResponse(html.replace('__FONTS__', json.dumps(FONTS)).replace('__ASSET_VERSION__', ASSET_VERSION),
+                        headers={'Cache-Control': 'no-cache'})
 
 
 @app.post('/generate')
