@@ -20,7 +20,8 @@ jobs:
     permissions:
       contents: read
     env:
-      IMAGE: ${{ secrets.DOCKER_USERNAME }}/printed_sign_generator
+      # Without the secret (forks, PRs) the image still builds under a placeholder name and is not pushed.
+      IMAGE: ${{ secrets.DOCKER_USERNAME || 'local' }}/printed_sign_generator
       # Push only from main/tags/schedule, and only when the Docker Hub secrets exist.
       PUSH: ${{ github.event_name != 'pull_request' && secrets.DOCKER_USERNAME != '' && secrets.DOCKER_TOKEN != '' }}
 
