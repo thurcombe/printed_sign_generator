@@ -1,0 +1,6 @@
+.git
+.venv
+*.stl
+*.3mf
+*.gcode
+__pycache__

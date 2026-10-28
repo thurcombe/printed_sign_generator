@@ -12,6 +12,8 @@ icon and text. Everything is parametric in OpenSCAD.
 | `trace_silhouette.py` | Turns any black-on-white image into an SVG the sign can use. |
 | `requirements.txt` | Python packages for the trace script. |
 | `.venv/` | Local Python environment with those packages installed. |
+| `web/` | Web UI (FastAPI) that wraps the above. |
+| `Dockerfile`, `compose.yml` | Container build for the web UI. |
 
 ## Changing the text and layout
 
@@ -71,6 +73,40 @@ openscad -D 'part="both"'   -o custom_sign.stl        custom_sign.scad
 For a multi-material printer, load the base and raised STLs as one object and
 assign a colour to each. For a single extruder, print `both` and swap filament
 at the top of the base plate (3 mm by default).
+
+## Web UI (container)
+
+A small web front end wraps the same `.scad` and tracer: fill in the text and
+plate settings, optionally upload an image or SVG for the icon, and download
+the combined STL. It is stateless; each request renders into a temp directory
+that is deleted afterwards. Nothing is stored.
+
+Build and run with podman or docker:
+
+```sh
+podman build -t printed_sign_generator .
+podman run --rm -p 8000:8000 --read-only --tmpfs /tmp printed_sign_generator
+# or
+podman compose up --build
+```
+
+Then open http://localhost:8000. The image is Alpine based with OpenSCAD,
+the URW fonts (Nimbus Sans Narrow among them) and the Python tracer. It is
+about 940 MB, most of which is Mesa/LLVM pulled in by OpenSCAD's Qt build and
+the scipy/scikit-image stack used by the tracer.
+
+The 3D preview in the page loads three.js from a CDN. Without internet
+access the download still works, only the preview is skipped.
+
+Environment variables: `RENDER_TIMEOUT` (seconds, default 180) caps a single
+OpenSCAD render.
+
+To run the web app without a container (needs `openscad` on the PATH):
+
+```sh
+./.venv/bin/pip install -r web/requirements.txt
+./.venv/bin/uvicorn web.app:app --reload
+```
 
 ## Setting up the Python environment again
 

@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Printed sign generator</title>
+<style>
+  :root { --bg:#f4f4f2; --fg:#1b1b1b; --card:#fff; --line:#d6d6d2; --accent:#1f5fbf; --muted:#666; --yellow:#ffd203; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#161616; --fg:#e8e8e8; --card:#202020; --line:#3a3a3a; --accent:#6ea1ff; --muted:#9a9a9a; } }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.4 system-ui, sans-serif; background:var(--bg); color:var(--fg); }
+  header { padding:14px 20px; border-bottom:1px solid var(--line); background:var(--card); }
+  header h1 { margin:0; font-size:18px; font-weight:600; }
+  main { display:grid; grid-template-columns:minmax(300px,420px) 1fr; gap:20px; padding:20px; max-width:1400px; margin:0 auto; }
+  @media (max-width:800px) { main { grid-template-columns:1fr; } }
+  fieldset { border:1px solid var(--line); border-radius:8px; margin:0 0 14px; padding:10px 14px 12px; background:var(--card); }
+  legend { padding:0 6px; color:var(--muted); font-size:13px; }
+  label { display:block; font-size:13px; color:var(--muted); margin-top:8px; }
+  input[type=text], input[type=number], select, textarea { width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--fg); font:inherit; }
+  textarea { min-height:70px; font-family:ui-monospace, monospace; }
+  .row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .row3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
+  .check { display:flex; align-items:center; gap:8px; margin-top:10px; font-size:14px; color:var(--fg); }
+  .check input { width:auto; }
+  button { padding:10px 18px; border:0; border-radius:8px; background:var(--accent); color:#fff; font:inherit; font-weight:600; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:default; }
+  #result { position:sticky; top:20px; }
+  #viewer { width:100%; aspect-ratio:16/9; background:#2a2a2a; border-radius:8px; border:1px solid var(--line); }
+  #status { margin:10px 0; color:var(--muted); min-height:1.4em; }
+  #download { display:none; margin-right:10px; text-decoration:none; }
+  .err { color:#c0392b; }
+  .warn { color:#b9770e; font-size:13px; }
+  small { color:var(--muted); }
+</style>
+</head>
+<body>
+<header><h1>Printed sign generator</h1></header>
+<main>
+<form id="f">
+  <fieldset><legend>Text</legend>
+    <label>Lines, one per row</label>
+    <textarea name="lines">I CAN CLEAR THE FENCE
+IN 0.6 SECONDS. CAN YOU?</textarea>
+    <label>Font</label>
+    <select name="font" id="font"></select>
+    <div class="row">
+      <div><label>Text size</label><input type="number" name="text_size" value="10.35" step="0.05" min="1"></div>
+      <div><label>Line gap (mm)</label><input type="number" name="line_gap" value="3" step="0.5" min="0"></div>
+    </div>
+    <small>Text size is not auto-fitted. If a line runs into the border, reduce it.</small>
+  </fieldset>
+
+  <fieldset><legend>Icon</legend>
+    <label class="check"><input type="checkbox" name="show_icon" checked> Show an icon above the text</label>
+    <label>Image (PNG/JPEG, dark shape on light) or SVG. Leave empty for the default dog.</label>
+    <input type="file" name="icon" accept=".png,.jpg,.jpeg,.gif,.bmp,.webp,.svg,image/*">
+    <div class="row3">
+      <div><label>Icon height (mm)</label><input type="number" name="icon_h" value="30" step="1" min="1"></div>
+      <div><label>Gap to text (mm)</label><input type="number" name="gap_icon_text" value="3" step="0.5" min="0"></div>
+      <div><label>Trace threshold</label><input type="number" name="threshold" value="128" step="1" min="0" max="255"></div>
+    </div>
+    <label class="check"><input type="checkbox" name="icon_flip"> Mirror horizontally</label>
+    <label class="check"><input type="checkbox" name="invert"> Image is a light shape on a dark background</label>
+  </fieldset>
+
+  <fieldset><legend>Plate</legend>
+    <div class="row3">
+      <div><label>Width (mm)</label><input type="number" name="width" value="180" step="1" min="20"></div>
+      <div><label>Corner radius</label><input type="number" name="corner_r" value="10.8" step="0.1" min="0"></div>
+      <div><label>Base thickness</label><input type="number" name="base_t" value="3" step="0.2" min="0.4"></div>
+      <div><label>Raised height</label><input type="number" name="raise_t" value="1" step="0.2" min="0.2"></div>
+      <div><label>Border inset</label><input type="number" name="ring_inset" value="4.2" step="0.1" min="0"></div>
+      <div><label>Border width</label><input type="number" name="ring_w" value="3.7" step="0.1" min="0"></div>
+    </div>
+    <label>Padding inside border (mm)</label><input type="number" name="inner_pad" value="4" step="0.5" min="0">
+    <small>Height is worked out from the content.</small>
+  </fieldset>
+
+  <fieldset><legend>Mounting holes</legend>
+    <label>Hole X positions (mm from left, comma separated; empty for none)</label>
+    <input type="text" name="hole_x" value="24, 156">
+    <div class="row">
+      <div><label>Hole diameter</label><input type="number" name="hole_d" value="4.2" step="0.1" min="0.5"></div>
+      <div><label>Countersink diameter (0 = none)</label><input type="number" name="csk_d" value="8.2" step="0.1" min="0"></div>
+    </div>
+  </fieldset>
+
+  <button type="submit" id="go">Generate STL</button>
+</form>
+
+<section id="result">
+  <canvas id="viewer"></canvas>
+  <div id="status">Fill in the form and press Generate.</div>
+  <a id="download" download="custom_sign.stl"><button type="button">Download STL</button></a>
+  <span id="size"></span>
+  <div id="warnings" class="warn"></div>
+</section>
+</main>
+
+<script>
+  const FONTS = __FONTS__;
+  const sel = document.getElementById('font');
+  const preferred = 'Nimbus Sans Narrow:style=Bold';
+  for (const f of FONTS) { const o = document.createElement('option'); o.value = o.textContent = f; if (f === preferred) o.selected = true; sel.appendChild(o); }
+  if (!FONTS.includes(preferred)) { const o = document.createElement('option'); o.value = o.textContent = preferred; sel.prepend(o); o.selected = true; }
+</script>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+               "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
+</script>
+<script type="module" src="/static/app.js"></script>
+</body>
+</html>

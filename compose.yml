@@ -1,0 +1,9 @@
+services:
+  sign:
+    build: .
+    image: printed_sign_generator
+    ports:
+      - "8000:8000"
+    read_only: true
+    tmpfs:
+      - /tmp
