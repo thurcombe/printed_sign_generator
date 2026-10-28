@@ -58,6 +58,8 @@ inner_pad = 4.0;
 /* [Mounting holes] */
 // Hole X positions (list). Use [] for no holes.
 hole_x = [24, 156];
+// Where the hole rows go. "top" sits beside the icon (or in a band above the text if there is no icon); "bottom" adds a band below the text. Use both for tall signs.
+hole_rows = "top"; // [top, bottom, top+bottom]
 // Through hole diameter (4.2 = M4 / #8 screw clearance)
 hole_d = 4.2;
 // Countersink diameter at the top face (0 = no countersink)
@@ -73,13 +75,23 @@ $fn = 64;
 n_lines = len(lines);
 cap_h = text_size * cap_ratio;
 text_block_h = n_lines * cap_h + max(0, n_lines - 1) * line_gap;
-content_h = (show_icon ? icon_h + gap_icon_text : 0) + text_block_h;
+has_holes = len(hole_x) > 0;
+want_top = has_holes && (hole_rows == "top" || hole_rows == "top+bottom");
+want_bot = has_holes && (hole_rows == "bottom" || hole_rows == "top+bottom");
+band_h = max(hole_d, csk_d) + 2;                  // height reserved for a hole row
+// Top holes sit beside the icon when there is one, so they only need a band of their own without it.
+top_band = (want_top && !show_icon) ? band_h + gap_icon_text : 0;
+bot_band = want_bot ? band_h + line_gap : 0;
+content_h = top_band + (show_icon ? icon_h + gap_icon_text : 0) + text_block_h + bot_band;
 margin = ring_inset + ring_w + inner_pad;      // plate edge -> content
 height = content_h + 2 * margin;
 inner_w = width - 2 * margin;
 content_top = height - margin;
-icon_y = content_top - icon_h;                    // bottom of the icon
-hole_y = show_icon ? content_top - icon_h / 2 : height / 2;
+icon_y = content_top - top_band - icon_h;         // bottom of the icon
+text_top = show_icon ? icon_y - gap_icon_text : content_top - top_band;   // top of the first text line
+hole_ys = concat(
+    want_top ? [show_icon ? content_top - icon_h / 2 : content_top - band_h / 2] : [],
+    want_bot ? [margin + band_h / 2] : []);
 eps = 0.01;
 
 echo(str("plate ", width, " x ", height, " mm, inner width ", inner_w, " mm"));
@@ -98,7 +110,7 @@ module rrect(w, h, r) {
 module plate_2d() {
     difference() {
         rrect(width, height, corner_r);
-        for (x = hole_x) translate([x, hole_y]) circle(d = hole_d);
+        for (x = hole_x, y = hole_ys) translate([x, y]) circle(d = hole_d);
     }
 }
 
@@ -114,7 +126,7 @@ module ring_2d() {
 
 module text_2d() {
     for (i = [0 : n_lines - 1]) {
-        baseline = (show_icon ? icon_y - gap_icon_text : content_top) - cap_h - i * (cap_h + line_gap);
+        baseline = text_top - cap_h - i * (cap_h + line_gap);
         translate([width / 2, baseline])
             text(lines[i], size = text_size, font = font, halign = "center", valign = "baseline");
     }
@@ -132,8 +144,8 @@ module base() {
     color([1, 0.82, 0.01]) difference() {
         linear_extrude(base_t) plate_2d();
         if (csk_d > hole_d)
-            for (x = hole_x)
-                translate([x, hole_y, base_t - (csk_d - hole_d) / 2])
+            for (x = hole_x, y = hole_ys)
+                translate([x, y, base_t - (csk_d - hole_d) / 2])
                     cylinder(d1 = hole_d, d2 = csk_d + 2 * eps, h = (csk_d - hole_d) / 2 + eps);
     }
 }

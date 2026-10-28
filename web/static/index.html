@@ -27,7 +27,17 @@
   #result { position:sticky; top:20px; }
   #viewer { width:100%; aspect-ratio:16/9; background:#2a2a2a; border-radius:8px; border:1px solid var(--line); }
   #status { margin:10px 0; color:var(--muted); min-height:1.4em; }
-  #download { display:none; margin-right:10px; text-decoration:none; }
+  .actions { display:flex; align-items:center; gap:10px; margin-top:10px; flex-wrap:wrap; }
+  #download { text-decoration:none; }
+  #download.disabled { pointer-events:none; }
+  #download button { background:#2e8b57; }
+  #status.stale { color:#b9770e; }
+  .bed { display:flex; align-items:center; gap:6px; margin-top:10px; font-size:14px; }
+  .bed label { margin:0; }
+  .bed input { width:80px; }
+  #fit.bad { color:#c0392b; font-weight:600; }
+  #fit.ok { color:var(--muted); }
+  #viewer.stale { opacity:.45; }
   .err { color:#c0392b; }
   .warn { color:#b9770e; font-size:13px; }
   small { color:var(--muted); }
@@ -79,20 +89,34 @@ IN 0.6 SECONDS. CAN YOU?</textarea>
   <fieldset><legend>Mounting holes</legend>
     <label>Hole X positions (mm from left, comma separated; empty for none)</label>
     <input type="text" name="hole_x" value="24, 156">
+    <label>Hole rows</label>
+    <select name="hole_rows">
+      <option value="top" selected>Top only (beside the icon)</option>
+      <option value="top+bottom">Top and bottom (tall signs)</option>
+      <option value="bottom">Bottom only</option>
+    </select>
     <div class="row">
       <div><label>Hole diameter</label><input type="number" name="hole_d" value="4.2" step="0.1" min="0.5"></div>
       <div><label>Countersink diameter (0 = none)</label><input type="number" name="csk_d" value="8.2" step="0.1" min="0"></div>
     </div>
   </fieldset>
 
-  <button type="submit" id="go">Generate STL</button>
 </form>
 
 <section id="result">
   <canvas id="viewer"></canvas>
-  <div id="status">Fill in the form and press Generate.</div>
-  <a id="download" download="custom_sign.stl"><button type="button">Download STL</button></a>
-  <span id="size"></span>
+  <div class="actions">
+    <button type="submit" form="f" id="go">Render</button>
+    <a id="download" download="custom_sign.stl" class="disabled" aria-disabled="true"><button type="button" disabled>Download STL</button></a>
+    <span id="size"></span>
+  </div>
+  <div class="bed">
+    <label for="bed_x">Build plate (mm)</label>
+    <input type="number" id="bed_x" value="256" min="10" step="1"> &times;
+    <input type="number" id="bed_y" value="256" min="10" step="1">
+    <span id="fit"></span>
+  </div>
+  <div id="status">Fill in the form and press Render.</div>
   <div id="warnings" class="warn"></div>
 </section>
 </main>

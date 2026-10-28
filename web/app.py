@@ -96,6 +96,7 @@ async def generate(
     ring_w: float = Form(3.7),
     inner_pad: float = Form(4.0),
     hole_x: str = Form(''),   # empty string = no holes (FastAPI treats '' as missing, so no other default)
+    hole_rows: str = Form('top'),
     hole_d: float = Form(4.2),
     csk_d: float = Form(8.2),
     threshold: float = Form(128),
@@ -109,6 +110,8 @@ async def generate(
         raise HTTPException(400, 'at most 10 lines of text')
     if len(font) > 100 or not re.fullmatch(r'[\w .:=,\-]+', font):
         raise HTTPException(400, 'font name has unexpected characters')
+    if hole_rows not in ('top', 'bottom', 'top+bottom'):
+        raise HTTPException(400, 'hole rows must be top, bottom or top+bottom')
     if csk_d and csk_d < hole_d:
         raise HTTPException(400, 'countersink diameter must be 0 or at least the hole diameter')
     if 2 * (ring_inset + ring_w + inner_pad) >= width - 10:
@@ -131,6 +134,7 @@ async def generate(
         'ring_w': num('ring width', ring_w, 0, 30),
         'inner_pad': num('inner padding', inner_pad, 0, 30),
         'hole_x': parse_holes(hole_x, width),
+        'hole_rows': scad_str(hole_rows),
         'hole_d': num('hole diameter', hole_d, 0.5, 20),
         'csk_d': num('countersink diameter', csk_d, 0, 30),
         'part': '"both"',
