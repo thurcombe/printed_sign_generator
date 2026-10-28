@@ -4,6 +4,7 @@ const status = document.getElementById('status');
 const dl = document.getElementById('download');
 const sizeEl = document.getElementById('size');
 const warnEl = document.getElementById('warnings');
+const fitEl2 = document.getElementById('fitnote');
 const go = document.getElementById('go');
 const dlBtn = dl.querySelector('button');
 let viewer = null;
@@ -49,7 +50,7 @@ form.addEventListener('submit', async (e) => {
   setDownload(false);
   status.textContent = 'Rendering, this takes a few seconds...';
   status.className = '';
-  sizeEl.textContent = ''; warnEl.textContent = '';
+  sizeEl.textContent = ''; warnEl.textContent = ''; fitEl2.textContent = '';
   const fd = new FormData(form);
   try {
     const r = await fetch('/generate', { method: 'POST', body: fd });
@@ -69,6 +70,8 @@ form.addEventListener('submit', async (e) => {
     const m = /([\d.]+) x ([\d.]+)/.exec(size || '');
     plate = m ? [parseFloat(m[1]), parseFloat(m[2])] : null;
     checkFit();
+    const fitNote = r.headers.get('X-Fit');
+    fitEl2.textContent = fitNote ? `Note: ${fitNote}.` : '';
     const warns = JSON.parse(r.headers.get('X-Warnings') || '[]');
     warnEl.textContent = warns.join(' | ');
     status.textContent = 'Rendered. Download is up to date with the settings.';

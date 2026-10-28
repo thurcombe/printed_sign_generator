@@ -57,7 +57,12 @@ IN 0.6 SECONDS. CAN YOU?</textarea>
       <div><label>Text size</label><input type="number" name="text_size" value="10.35" step="0.05" min="1"></div>
       <div><label>Line gap (mm)</label><input type="number" name="line_gap" value="3" step="0.5" min="0"></div>
     </div>
-    <small>Text size is not auto-fitted. If a line runs into the border, reduce it.</small>
+    <label>If a line is too wide for the sign</label>
+    <select name="fit">
+      <option value="shrink" selected>Shrink the text so the longest line fits</option>
+      <option value="widen">Widen the sign to fit the longest line</option>
+      <option value="none">Do nothing (text may run into the border)</option>
+    </select>
   </fieldset>
 
   <fieldset><legend>Icon</legend>
@@ -94,6 +99,7 @@ IN 0.6 SECONDS. CAN YOU?</textarea>
       <option value="top" selected>Top only (beside the icon)</option>
       <option value="top+bottom">Top and bottom (tall signs)</option>
       <option value="bottom">Bottom only</option>
+      <option value="middle">Middle, in tabs on the outer sides (clear of the text)</option>
     </select>
     <div class="row">
       <div><label>Hole diameter</label><input type="number" name="hole_d" value="4.2" step="0.1" min="0.5"></div>
@@ -117,6 +123,7 @@ IN 0.6 SECONDS. CAN YOU?</textarea>
     <span id="fit"></span>
   </div>
   <div id="status">Fill in the form and press Render.</div>
+  <div id="fitnote" class="warn"></div>
   <div id="warnings" class="warn"></div>
 </section>
 </main>

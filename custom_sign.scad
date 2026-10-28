@@ -58,8 +58,10 @@ inner_pad = 4.0;
 /* [Mounting holes] */
 // Hole X positions (list). Use [] for no holes.
 hole_x = [24, 156];
-// Where the hole rows go. "top" sits beside the icon (or in a band above the text if there is no icon); "bottom" adds a band below the text. Use both for tall signs.
-hole_rows = "top"; // [top, bottom, top+bottom]
+// Where the holes go. "top" sits beside the icon (or in a band above the text if there is no icon); "bottom" adds a band below the text; use both for tall signs. "middle" puts one hole in a rounded tab on each side of the sign at mid-height, clear of the content (hole_x is then ignored).
+hole_rows = "top"; // [top, bottom, top+bottom, middle]
+// Material around the hole (or countersink) in a middle tab
+tab_pad = 3.0;
 // Through hole diameter (4.2 = M4 / #8 screw clearance)
 hole_d = 4.2;
 // Countersink diameter at the top face (0 = no countersink)
@@ -78,6 +80,10 @@ text_block_h = n_lines * cap_h + max(0, n_lines - 1) * line_gap;
 has_holes = len(hole_x) > 0;
 want_top = has_holes && (hole_rows == "top" || hole_rows == "top+bottom");
 want_bot = has_holes && (hole_rows == "bottom" || hole_rows == "top+bottom");
+want_tabs = hole_rows == "middle";
+tab_r = max(hole_d, csk_d) / 2 + tab_pad;         // radius of a side tab; its hole sits at its centre
+tab_w = want_tabs ? 2 * tab_r : 0;                // how far each tab sticks out
+overall_w = width + 2 * tab_w;
 band_h = max(hole_d, csk_d) + 2;                  // height reserved for a hole row
 // Top holes sit beside the icon when there is one, so they only need a band of their own without it.
 top_band = (want_top && !show_icon) ? band_h + gap_icon_text : 0;
@@ -92,9 +98,12 @@ text_top = show_icon ? icon_y - gap_icon_text : content_top - top_band;   // top
 hole_ys = concat(
     want_top ? [show_icon ? content_top - icon_h / 2 : content_top - band_h / 2] : [],
     want_bot ? [margin + band_h / 2] : []);
+// Every hole as [x, y]
+hole_pts = want_tabs ? [[-tab_r, height / 2], [width + tab_r, height / 2]]
+                     : [for (x = hole_x, y = hole_ys) [x, y]];
 eps = 0.01;
 
-echo(str("plate ", width, " x ", height, " mm, inner width ", inner_w, " mm"));
+echo(str("plate ", overall_w, " x ", height, " mm, inner width ", inner_w, " mm"));
 
 // ------------------------------------------------------------------
 // Icon from the SVG, scaled to h tall and centred on the origin.
@@ -107,10 +116,22 @@ module rrect(w, h, r) {
     offset(r = r) offset(delta = -r) square([w, h]);
 }
 
+// Rounded mounting tab on one side, blended into the plate edge. side = -1 left, +1 right.
+module tab_2d(side) {
+    cx = side < 0 ? -tab_r : width + tab_r;
+    hull() {
+        translate([cx, height / 2]) circle(r = tab_r);
+        translate([side < 0 ? 0 : width - 1, height / 2 - tab_r]) square([1, 2 * tab_r]);
+    }
+}
+
 module plate_2d() {
     difference() {
-        rrect(width, height, corner_r);
-        for (x = hole_x, y = hole_ys) translate([x, y]) circle(d = hole_d);
+        union() {
+            rrect(width, height, corner_r);
+            if (want_tabs) { tab_2d(-1); tab_2d(1); }
+        }
+        for (p = hole_pts) translate(p) circle(d = hole_d);
     }
 }
 
@@ -144,8 +165,8 @@ module base() {
     color([1, 0.82, 0.01]) difference() {
         linear_extrude(base_t) plate_2d();
         if (csk_d > hole_d)
-            for (x = hole_x, y = hole_ys)
-                translate([x, y, base_t - (csk_d - hole_d) / 2])
+            for (p = hole_pts)
+                translate([p[0], p[1], base_t - (csk_d - hole_d) / 2])
                     cylinder(d1 = hole_d, d2 = csk_d + 2 * eps, h = (csk_d - hole_d) / 2 + eps);
     }
 }

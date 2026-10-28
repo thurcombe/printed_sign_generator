@@ -23,9 +23,10 @@ Window > Customizer. The main ones:
 
 - `lines` is a list of strings, one per line. Add or remove entries; the plate
   height is worked out from the content.
-- `text_size` is fixed, not auto-fit, because OpenSCAD 2021 cannot measure
+- `text_size` is fixed in the `.scad`, because OpenSCAD 2021 cannot measure
   text width. The default 10.35 makes the longest default line just fill the
-  width. If a new line runs into the border, lower it.
+  width. If a new line runs into the border, lower it. The web UI does this
+  for you (see below).
 - `font` is a fontconfig name. `fc-list` shows what is installed.
 - `show_icon`, `icon_h`, `icon_flip` control the icon.
 - `width`, `corner_r`, `base_t`, `raise_t`, `ring_inset`, `ring_w`,
@@ -33,7 +34,10 @@ Window > Customizer. The main ones:
 - `hole_x` is a list of hole X positions (`[]` for none), with `hole_d` and
   `csk_d` for the hole and countersink. `hole_rows` puts the holes at the
   top (beside the icon, or in a band above the text when there is no icon),
-  at the bottom in a band below the text, or both. Use both for tall signs.
+  at the bottom in a band below the text, both (for tall signs), or
+  `middle`: one hole in a rounded tab on each outer side of the sign at
+  mid-height, clear of the content. `tab_pad` sets the material around a
+  tab's hole. The echoed plate size includes the tabs.
 
 ## Changing the icon
 
@@ -88,7 +92,11 @@ at the top of the base plate (3 mm by default).
 
 A small web front end wraps the same `.scad` and tracer: fill in the text and
 plate settings, optionally upload an image or SVG for the icon, press Render,
-check the preview, and download the combined STL. The download is only
+check the preview, and download the combined STL. Because OpenSCAD cannot
+measure text, the app first renders the text lines on their own to measure
+them, then either shrinks the text size so the longest line fits or widens
+the sign to fit it, as chosen in the form; a note under the result says what
+it did. The download is only
 enabled for the settings currently shown; changing anything marks the preview
 stale until you render again. A build plate size (default 256 x 256 mm)
 is checked against the rendered sign in both orientations and warns if it

@@ -3,7 +3,7 @@
 Stateless: each request renders into a temp directory, streams the STL back
 and deletes everything. Nothing is kept between requests.
 """
-import asyncio, json, os, re, shutil, subprocess, tempfile
+import asyncio, json, os, re, shutil, struct, subprocess, tempfile
 from pathlib import Path
 from typing import Optional
 
@@ -111,6 +111,7 @@ async def generate(
     inner_pad: float = Form(4.0),
     hole_x: str = Form(''),   # empty string = no holes (FastAPI treats '' as missing, so no other default)
     hole_rows: str = Form('top'),
+    fit: str = Form('shrink'),
     hole_d: float = Form(4.2),
     csk_d: float = Form(8.2),
     threshold: float = Form(128),
@@ -124,12 +125,30 @@ async def generate(
         raise HTTPException(400, 'at most 10 lines of text')
     if len(font) > 100 or not re.fullmatch(r'[\w .:=,\-]+', font):
         raise HTTPException(400, 'font name has unexpected characters')
-    if hole_rows not in ('top', 'bottom', 'top+bottom'):
-        raise HTTPException(400, 'hole rows must be top, bottom or top+bottom')
+    if hole_rows not in ('top', 'bottom', 'top+bottom', 'middle'):
+        raise HTTPException(400, 'hole rows must be top, bottom, top+bottom or middle')
+    if fit not in ('shrink', 'widen', 'none'):
+        raise HTTPException(400, 'fit must be shrink, widen or none')
     if csk_d and csk_d < hole_d:
         raise HTTPException(400, 'countersink diameter must be 0 or at least the hole diameter')
     if 2 * (ring_inset + ring_w + inner_pad) >= width - 10:
         raise HTTPException(400, 'border and padding leave no room for content')
+
+    # Fit the text: OpenSCAD cannot measure text, so measure the lines with a quick
+    # text-only render first, then shrink the size or widen the plate as asked.
+    margin = ring_inset + ring_w + inner_pad
+    fit_note = ''
+    if fit != 'none':
+        widths = await measure_lines(text_lines, font, text_size)
+        widest = max(widths)
+        inner_w = width - 2 * margin
+        if widest > inner_w:
+            if fit == 'shrink':
+                text_size = round(text_size * inner_w / widest * 0.995, 2)
+                fit_note = f'text size reduced to {text_size:g} so the longest line fits'
+            else:
+                width = round(widest / 0.995 + 2 * margin, 1)
+                fit_note = f'plate widened to {width:g} mm to fit the longest line'
 
     defs = {
         'lines': '[' + ','.join(scad_str(l) for l in text_lines) + ']',
@@ -198,12 +217,42 @@ async def generate(
         headers = {
             'Content-Disposition': 'attachment; filename="custom_sign.stl"',
             'X-Plate-Size': size,
+            'X-Text-Size': f'{text_size:g}',
+            'X-Fit': fit_note,
             'X-Warnings': json.dumps(warnings),
-            'Access-Control-Expose-Headers': 'X-Plate-Size, X-Warnings',
+            'Access-Control-Expose-Headers': 'X-Plate-Size, X-Text-Size, X-Fit, X-Warnings',
         }
         return Response(out.read_bytes(), media_type='model/stl', headers=headers)
     finally:
         shutil.rmtree(work, ignore_errors=True)
+
+
+async def measure_lines(lines, font, text_size):
+    """Width in mm of each text line as OpenSCAD will render it: extrude every line
+    at a known y offset, export binary STL, and read the x extent per band."""
+    step = 1000.0
+    scad = ''.join(f'translate([0, {i * step}]) linear_extrude(1) text({scad_str(l)}, size={text_size!r}, font={scad_str(font)}, halign="left", valign="baseline", $fn=16);\n'
+                   for i, l in enumerate(lines))
+    work = Path(tempfile.mkdtemp(prefix='measure-'))
+    try:
+        src, out = work / 'm.scad', work / 'm.stl'
+        src.write_text(scad)
+        r = await run([OPENSCAD, '--export-format', 'binstl', '-o', str(out), str(src)], 60)
+        if r.returncode != 0 or not out.exists():
+            raise HTTPException(500, 'measuring the text failed: ' + r.stderr.strip()[-300:])
+        data = out.read_bytes()
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    n = struct.unpack_from('<I', data, 80)[0]
+    lo = [float('inf')] * len(lines); hi = [float('-inf')] * len(lines)
+    for t in range(n):
+        base = 84 + t * 50 + 12                      # skip normal
+        for v in range(3):
+            x, y, _ = struct.unpack_from('<fff', data, base + v * 12)
+            i = int(round(y / step))
+            if 0 <= i < len(lines):
+                lo[i] = min(lo[i], x); hi[i] = max(hi[i], x)
+    return [max(0.0, h - l) if h > l else 0.0 for l, h in zip(lo, hi)]
 
 
 async def run(cmd, timeout):
