@@ -143,7 +143,11 @@ balanced on the centroid of its ink rather than on its outline (an icon's
 outline is mostly empty space above a dense block of text, so the content
 looks low otherwise), or slid down or up as far as everything still fits,
 which on a triangle puts the text along the wide base. The nudge fields add
-to that, for the whole block, the icon alone or the text alone. The download is only
+to that, for the whole block, the icon alone or the text alone: the block is
+placed from the content without its nudges, so nudging the text down moves
+only the text and not the icon, and the fit check (shrink or enlarge) runs on
+the nudged result. If nothing fits even with the text at its smallest, the
+error says which element runs off and where. The download is only
 enabled for the settings currently shown; changing anything marks the preview
 stale until you render again. A build plate size (default 256 x 256 mm)
 is checked against the rendered sign in both orientations and warns if it

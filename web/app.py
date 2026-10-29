@@ -241,10 +241,19 @@ async def generate(
                 shape_name = 'circle' if shape == 'round' else 'triangle'
                 if not fits(text_size, dim) and fit != 'none':
                     if fit == 'shrink':
-                        lo, hi = 0.5, text_size
-                        if not fits(lo, dim):
-                            raise HTTPException(400, f'the icon and holes alone do not fit a {shape_name} of this {dim_name}')
-                        for _ in range(40):
+                        # The balance point moves as the text shrinks, so fitting is not
+                        # monotonic in the size: scan down for the largest size that fits,
+                        # then bisect up to the next size that does not.
+                        steps = int((text_size - 0.5) / 0.1)
+                        lo = next((text_size - i * 0.1 for i in range(steps + 1) if fits(text_size - i * 0.1, dim)), None)
+                        if lo is None:
+                            boxes, balanced = at(0.5)
+                            s0 = area(dim).place(boxes, balanced, anchor, content_shift)[0]
+                            raise HTTPException(400, f'nothing fits a {shape_name} of this {dim_name} even with the text at its smallest: '
+                                                     + ', '.join(area(dim).misfits(boxes, s0))
+                                                     + '. Change the nudges, the icon height or gap, or the hole rows.')
+                        hi = min(lo + 0.1, text_size)
+                        for _ in range(30):
                             mid = (lo + hi) / 2
                             if fits(mid, dim): lo = mid
                             else: hi = mid
@@ -323,9 +332,11 @@ def content_boxes(text_size, lines, user_shift, n, line_gap, hole_rows, hole_d, 
                   icon_shift=0.0, text_shift=0.0):
     """Lay the content of a round or triangular sign out exactly as custom_sign.scad
     does (hole bands, icon, text lines, box centred on the shape's centre, icon and
-    text nudged by their own shifts). Returns the boxes as (width, y_top, y_bottom)
-    relative to the shape's centre with the block unshifted, and the block shift
-    that puts the ink centroid on the centre plus the user's own shift."""
+    text nudged by their own shifts). Returns the boxes as (name, width, y_top,
+    y_bottom) relative to the shape's centre with the block unshifted, and the block
+    shift that puts the ink centroid on the centre plus the user's own shift. The
+    centroid is taken before the icon and text nudges, so a nudge moves only what it
+    names and never the rest of the block."""
     cap_h = text_size * 1.024
     band_h = max(hole_d, csk_d) + 2
     want_top = hole_rows in ('top', 'top+bottom')
@@ -334,28 +345,27 @@ def content_boxes(text_size, lines, user_shift, n, line_gap, hole_rows, hole_d, 
     bot_band = band_h + line_gap if want_bot else 0
     content_h = top_band + (icon_h + gap_icon_text if icon_h else 0) + n * cap_h + max(0, n - 1) * line_gap + bot_band
     top = content_h / 2
-    boxes = []                                    # (width, y_top, y_bottom) relative to the centre
-    ink = []                                      # (area, centroid y)
+    boxes = []                                    # (name, width, y_top, y_bottom) relative to the centre
+    ink = []                                      # (area, centroid y) before the nudges
     if want_top:
-        boxes.append((max(hole_d, csk_d), top, top - band_h))
+        boxes.append(('top hole', max(hole_d, csk_d), top, top - band_h))
     y = top - top_band
     if icon_h:
-        yi = y + icon_shift
-        boxes.append((icon['w'], yi, yi - icon_h)); ink.append((icon['area'], yi - icon_h / 2 + icon['cy']))
+        boxes.append(('icon', icon['w'], y + icon_shift, y + icon_shift - icon_h)); ink.append((icon['area'], y - icon_h / 2 + icon['cy']))
         y -= icon_h + gap_icon_text
-    y += text_shift
-    for m in lines:
-        boxes.append((m['w'], y, y - cap_h)); ink.append((m['area'], y - cap_h + m['cy']))   # cy is relative to the baseline
+    for i, m in enumerate(lines):
+        name = 'text' if n == 1 else f'text line {i + 1}'
+        boxes.append((name, m['w'], y + text_shift, y + text_shift - cap_h)); ink.append((m['area'], y - cap_h + m['cy']))   # cy is relative to the baseline
         y -= cap_h + line_gap
     if want_bot:
-        boxes.append((max(hole_d, csk_d), -top + band_h, -top))
+        boxes.append(('bottom hole', max(hole_d, csk_d), -top + band_h, -top))
     total = sum(a for a, _ in ink)
     centroid = sum(a * cy for a, cy in ink) / total if total else 0.0
     return boxes, -centroid + user_shift
 
 
 def shifted(boxes, s):
-    return [(w, y1 + s, y2 + s) for w, y1, y2 in boxes]
+    return [(name, w, y1 + s, y2 + s) for name, w, y1, y2 in boxes]
 
 
 class ContentArea:
@@ -366,7 +376,19 @@ class ContentArea:
     tol = 0.3
 
     def contains(self, boxes, s):
-        return all(self.inside(x, y) for w, y1, y2 in shifted(boxes, s) for x in (-w / 2, w / 2) for y in (y1, y2))
+        return all(self.inside(x, y) for _, w, y1, y2 in shifted(boxes, s) for x in (-w / 2, w / 2) for y in (y1, y2))
+
+    def misfits(self, boxes, s):
+        """What sticks out at block shift s, as phrases for an error message."""
+        lo, hi = self.extent()
+        out = []
+        for name, w, y1, y2 in shifted(boxes, s):
+            if all(self.inside(x, y) for x in (-w / 2, w / 2) for y in (y1, y2)):
+                continue
+            where = ('runs off the top' if y1 > hi else 'runs off the bottom' if y2 < lo
+                     else f'is too wide ({w:.0f} mm) where it sits')
+            out.append(f'the {name} {where}')
+        return out
 
     def fit_interval(self, boxes):
         """Range of block shifts at which the content fits (it is an interval, the
@@ -394,7 +416,7 @@ class ContentArea:
             return s, how
         if iv is None:                            # nothing fits (fit mode none): sit on the edge like the SCAD file does
             lo, hi = self.extent()
-            s = (lo - min(y2 for _, _, y2 in boxes) if anchor == 'bottom' else hi - max(y1 for _, y1, _ in boxes)) + user_shift
+            s = (lo - min(y2 for *_, y2 in boxes) if anchor == 'bottom' else hi - max(y1 for _, _, y1, _ in boxes)) + user_shift
             return s, f'content anchored at the {anchor} (it does not fit, so it overhangs the border)'
         s = (iv[0] if anchor == 'bottom' else iv[1]) + user_shift
         return s, f'content anchored at the {anchor}, {abs(s):.1f} mm {"above" if s > 0 else "below"} the centre'
