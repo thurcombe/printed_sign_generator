@@ -112,14 +112,25 @@ fills a pocket in the plate, so a union of the two is a featureless slab.
 Print face up with a filament per part. The design reads correctly from the
 top face, so that is the face to put against the glass.
 
+The web UI does this for you and offers two downloads per render:
+
+- a `.3mf` project for OrcaSlicer or Bambu Studio, one object with two
+  parts, the plate on filament 1 and the border, icon and text on filament 2.
+  Open it (File, Open project, or drop it on the window and choose to load
+  the geometry and settings), pick your two filaments, slice. No splitting or
+  painting needed, and it works the same for raised and flush signs;
+- an `.stl` with the two bodies as two shells. Any slicer opens it, but it
+  arrives as one single-colour object: in Orca or Bambu Studio right click it,
+  Split to parts, and assign a filament to each part; in PrusaSlicer split to
+  parts the same way. For a raised sign on a single-extruder printer you can
+  instead add a filament change at the top of the plate (3 mm by default).
+
 ## Web UI (container)
 
 A small web front end wraps the same `.scad` and tracer: fill in the text and
 plate settings, optionally upload an image or SVG for the icon, press Render,
-check the preview, and download the combined STL. For the flush style the
-STL holds two shells, plate and inlay; in the slicer split the object into
-parts (Bambu Studio and OrcaSlicer: right click, Split to parts; PrusaSlicer:
-Split to parts) and assign a filament to each. Because OpenSCAD cannot
+check the preview, and download either the Orca / Bambu project with the
+filaments already assigned or a plain two-shell STL (see Exporting above). Because OpenSCAD cannot
 measure text, the app first renders the text lines on their own to measure
 them (and the icon), then either shrinks the text so it fits or makes the sign
 bigger to fit it, as chosen in the form; a note under the result says what it

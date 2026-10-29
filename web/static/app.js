@@ -2,11 +2,12 @@
 const form = document.getElementById('f');
 const status = document.getElementById('status');
 const dl = document.getElementById('download');
+const dl3 = document.getElementById('download3mf');
 const sizeEl = document.getElementById('size');
 const warnEl = document.getElementById('warnings');
 const fitEl2 = document.getElementById('fitnote');
 const go = document.getElementById('go');
-const dlBtn = dl.querySelector('button');
+const dlBtn = dl.querySelector('button'), dl3Btn = dl3.querySelector('button');
 let viewer = null;
 let rendered = false;
 let plate = null;   // [w, h] of the last render in mm
@@ -25,9 +26,11 @@ bedX.addEventListener('input', checkFit);
 bedY.addEventListener('input', checkFit);
 
 function setDownload(enabled) {
-  dlBtn.disabled = !enabled;
-  dl.classList.toggle('disabled', !enabled);
-  dl.setAttribute('aria-disabled', String(!enabled));
+  for (const [a, b] of [[dl, dlBtn], [dl3, dl3Btn]]) {
+    b.disabled = !enabled;
+    a.classList.toggle('disabled', !enabled);
+    a.setAttribute('aria-disabled', String(!enabled));
+  }
 }
 
 // Any change after a render makes the preview and download stale until re-rendered.
@@ -70,14 +73,19 @@ form.addEventListener('submit', async (e) => {
       try { const d = (await r.json()).detail; msg = typeof d === 'string' ? d : JSON.stringify(d); } catch {}
       throw new Error(msg);
     }
-    const blob = await r.blob();
+    // The body is the STL followed by the Orca/Bambu project; X-STL-Bytes says where one ends.
+    const buf = await r.arrayBuffer();
+    const n = parseInt(r.headers.get('X-STL-Bytes') || '', 10) || buf.byteLength;
+    const stl = buf.slice(0, n);
     if (dl.href) URL.revokeObjectURL(dl.href);
-    dl.href = URL.createObjectURL(blob);
+    if (dl3.href) URL.revokeObjectURL(dl3.href);
+    dl.href = URL.createObjectURL(new Blob([stl], { type: 'model/stl' }));
+    dl3.href = URL.createObjectURL(new Blob([buf.slice(n)], { type: 'model/3mf' }));
     rendered = true;
     setDownload(true);
     document.getElementById('viewer').classList.remove('stale');
     const size = r.headers.get('X-Plate-Size');
-    sizeEl.textContent = size ? `Sign ${size}, ${(blob.size / 1024).toFixed(0)} kB` : '';
+    sizeEl.textContent = size ? `Sign ${size}` : '';
     const m = /([\d.]+) x ([\d.]+)/.exec(size || '');
     plate = m ? [parseFloat(m[1]), parseFloat(m[2])] : null;
     checkFit();
@@ -86,7 +94,7 @@ form.addEventListener('submit', async (e) => {
     const warns = JSON.parse(r.headers.get('X-Warnings') || '[]');
     warnEl.textContent = warns.join(' | ');
     status.textContent = 'Rendered. Download is up to date with the settings.';
-    await preview(await blob.arrayBuffer(), parseInt(r.headers.get('X-Inlay-From') || '', 10));
+    await preview(stl, parseInt(r.headers.get('X-Inlay-From') || '', 10));
   } catch (err) {
     status.textContent = err.message;
     status.className = 'err';
@@ -95,7 +103,7 @@ form.addEventListener('submit', async (e) => {
   }
 });
 
-// inlayFrom: for a flush sign, the index of the first triangle of the black inlay shell (NaN otherwise).
+// inlayFrom: the index of the first triangle of the black shell (NaN falls back to colouring by height).
 async function preview(buf, inlayFrom) {
   let THREE, STLLoader, OrbitControls;
   try {
@@ -129,8 +137,8 @@ async function preview(buf, inlayFrom) {
   geom.computeVertexNormals();
   geom.computeBoundingBox();
   const bb = geom.boundingBox, c = new THREE.Vector3(); bb.getCenter(c);
-  // Flush: everything from the inlay shell onwards is black. Raised: colour by height,
-  // base plate yellow, raised features black.
+  // Everything from the second shell onwards is black; without that header, colour by
+  // height instead (base plate yellow, raised tops black).
   const topZ = bb.max.z, pos = geom.attributes.position, colors = new Float32Array(pos.count * 3);
   for (let i = 0; i < pos.count; i++) {
     const black = inlayFrom >= 0 ? i >= inlayFrom * 3

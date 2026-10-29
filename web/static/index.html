@@ -31,9 +31,10 @@
   #viewer { width:100%; aspect-ratio:16/9; background:#2a2a2a; border-radius:8px; border:1px solid var(--line); }
   #status { margin:10px 0; color:var(--muted); min-height:1.4em; }
   .actions { display:flex; align-items:center; gap:10px; margin-top:10px; flex-wrap:wrap; }
-  #download { text-decoration:none; }
-  #download.disabled { pointer-events:none; }
+  .actions a { text-decoration:none; }
+  .actions a.disabled { pointer-events:none; }
   #download button { background:#2e8b57; }
+  #download3mf button { background:#7a4fbf; }
   #status.stale { color:#b9770e; }
   .bed { display:flex; align-items:center; gap:6px; margin-top:10px; font-size:14px; }
   .bed label { margin:0; }
@@ -148,6 +149,7 @@ IN 0.6 SECONDS. CAN YOU?</textarea>
   <canvas id="viewer"></canvas>
   <div class="actions">
     <button type="submit" form="f" id="go">Render</button>
+    <a id="download3mf" download="custom_sign.3mf" class="disabled" aria-disabled="true"><button type="button" disabled>Download 3MF for Orca / Bambu</button></a>
     <a id="download" download="custom_sign.stl" class="disabled" aria-disabled="true"><button type="button" disabled>Download STL</button></a>
     <span id="size"></span>
   </div>

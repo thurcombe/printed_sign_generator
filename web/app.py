@@ -12,6 +12,8 @@ from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from PIL import Image, UnidentifiedImageError
 
+from .threemf import orca_project
+
 ROOT = Path(os.environ.get('SIGN_ROOT', Path(__file__).resolve().parent.parent))
 SCAD = ROOT / 'custom_sign.scad'
 DEFAULT_ICON = ROOT / 'icon.svg'
@@ -172,7 +174,7 @@ async def generate(
         'content_shift': num('content shift', content_shift, -200, 200),
         'icon_shift': num('icon shift', icon_shift, -200, 200),
         'text_shift': num('text shift', text_shift, -200, 200),
-        'hole_x': '[]' if shape == 'round' else parse_holes(hole_x, width),
+        'hole_x': '[]' if shape != 'rectangle' or hole_rows in ('none', 'middle') else parse_holes(hole_x, width),
         'hole_rows': scad_str(hole_rows),
         'hole_d': num('hole diameter', hole_d, 0.5, 20),
         'csk_d': num('countersink diameter', csk_d, 0, 30),
@@ -293,28 +295,26 @@ async def generate(
                 raise HTTPException(500, 'OpenSCAD failed: ' + ('; '.join(err) or r.stderr.strip()[-500:]))
             return out.read_bytes(), r.stderr
 
-        if style == 'flush':
-            # The inlay and the plate meet at the face, so a union would be a plain slab.
-            # Render the two bodies separately and ship them as two shells in one STL;
-            # the slicer splits them into parts and takes a filament for each.
-            (base_stl, log), (inlay_stl, _) = await asyncio.gather(render('base'), render('raised'))
-            stl, inlay_from = join_stl(base_stl, inlay_stl)
-        else:
-            stl, log = await render('both')
-            inlay_from = ''
+        # Render the plate and the black features as two bodies. They go out twice in one
+        # response: as two shells in one STL, and as an OrcaSlicer / Bambu Studio project
+        # (.3mf) with the plate on filament 1 and the features on filament 2, so a
+        # two-colour print needs no manual splitting or painting in the slicer.
+        (base_stl, log), (top_stl, _) = await asyncio.gather(render('base'), render('raised'))
+        stl, inlay_from = join_stl(base_stl, top_stl)
+        project = orca_project([('plate', base_stl, 1), ('inlay' if style == 'flush' else 'raised', top_stl, 2)])
         warnings = [l.replace('WARNING: ', '') for l in log.splitlines() if l.startswith('WARNING')]
         m = re.search(r'ECHO: "plate ([\d.]+) x ([\d.]+) mm', log)
         size = f'{float(m.group(1)):.1f} x {float(m.group(2)):.1f} mm' if m else ''
         headers = {
-            'Content-Disposition': 'attachment; filename="custom_sign.stl"',
             'X-Plate-Size': size,
             'X-Text-Size': f'{text_size:g}',
             'X-Fit': '; '.join(notes),
-            'X-Inlay-From': str(inlay_from),
+            'X-Inlay-From': str(inlay_from),        # first triangle of the second shell in the STL
+            'X-STL-Bytes': str(len(stl)),           # the STL comes first, the .3mf project follows
             'X-Warnings': json.dumps(warnings),
-            'Access-Control-Expose-Headers': 'X-Plate-Size, X-Text-Size, X-Fit, X-Inlay-From, X-Warnings',
+            'Access-Control-Expose-Headers': 'X-Plate-Size, X-Text-Size, X-Fit, X-Inlay-From, X-STL-Bytes, X-Warnings',
         }
-        return Response(stl, media_type='model/stl', headers=headers)
+        return Response(stl + project, media_type='application/octet-stream', headers=headers)
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
