@@ -131,8 +131,8 @@ async def generate(
         raise HTTPException(400, 'font name has unexpected characters')
     if hole_rows not in ('none', 'top', 'bottom', 'top+bottom', 'middle'):
         raise HTTPException(400, 'hole rows must be top, bottom, top+bottom or middle')
-    if shape not in ('rectangle', 'round'):
-        raise HTTPException(400, 'shape must be rectangle or round')
+    if shape not in ('rectangle', 'round', 'triangle'):
+        raise HTTPException(400, 'shape must be rectangle, round or triangle')
     if style not in ('raised', 'flush'):
         raise HTTPException(400, 'style must be raised or flush')
     if style == 'flush' and raise_t >= base_t:
@@ -204,37 +204,57 @@ async def generate(
         # icon) with a quick flat render first, then shrink the text or enlarge the
         # plate as asked.
         notes = []
-        if fit != 'none' or shape == 'round':
+        if fit != 'none' or shape in ('round', 'triangle'):
             ink = await measure_lines(text_lines, font, text_size, icon_path if show_icon else None, icon_h)
             icon_ink = ink.pop() if show_icon else None
             widths = [m['w'] for m in ink]
-            if shape == 'round':
+            if shape in ('round', 'triangle'):
                 # Balance the content on its ink centroid rather than its bounding box, then
-                # fit it in the circle. Text scales with its size; bands and the icon do not.
+                # fit it in the shape. Text scales with its size; bands and the icon do not.
                 layout = dict(n=len(text_lines), line_gap=line_gap, hole_rows=hole_rows, hole_d=hole_d, csk_d=csk_d,
                               gap_icon_text=gap_icon_text, icon_h=icon_h if show_icon else None, icon=icon_ink)
                 measured_size = text_size
                 def at(size):
                     k = size / measured_size
-                    return round_layout(size, [dict(w=m['w'] * k, area=m['area'] * k * k, cy=m['cy'] * k) for m in ink],
-                                        content_shift, **layout)
-                r, shift = at(text_size)
-                need = 2 * (r + margin)
-                if need > diameter and fit != 'none':
+                    return content_boxes(size, [dict(w=m['w'] * k, area=m['area'] * k * k, cy=m['cy'] * k) for m in ink],
+                                         content_shift, **layout)
+                boxes, shift = at(text_size)
+                if shape == 'round':
+                    need = 2 * (round_radius(boxes) + margin)
+                    fits = lambda size, dia: 2 * (round_radius(at(size)[0]) + margin) <= dia * 0.995
+                    too_small = f'the icon and holes alone need a diameter of about {need:.0f} mm'
+                    size_now = diameter
+                else:
+                    fits = lambda size, w: tri_fits(at(size)[0], w, corner_r, margin)
+                    too_small = 'the icon and holes alone do not fit a triangle of this width'
+                    size_now = width
+                if not fits(text_size, size_now) and fit != 'none':
                     if fit == 'shrink':
                         lo, hi = 0.5, text_size
-                        if 2 * (at(lo)[0] + margin) > diameter:
-                            raise HTTPException(400, f'the icon and holes alone need a diameter of about {need:.0f} mm')
+                        if not fits(lo, size_now):
+                            raise HTTPException(400, too_small)
                         for _ in range(40):
                             mid = (lo + hi) / 2
-                            if 2 * (at(mid)[0] + margin) > diameter * 0.995: hi = mid
-                            else: lo = mid
+                            if fits(mid, size_now): lo = mid
+                            else: hi = mid
                         text_size = round(lo, 2)
-                        r, shift = at(text_size)
-                        notes.append(f'text size reduced to {text_size:g} so the content fits the circle')
-                    else:
+                        boxes, shift = at(text_size)
+                        notes.append(f'text size reduced to {text_size:g} so the content fits the {shape if shape == "triangle" else "circle"}')
+                    elif shape == 'round':
                         diameter = round(need / 0.995 + 0.05, 1)
                         notes.append(f'diameter increased to {diameter:g} mm to fit the content')
+                    else:
+                        lo, hi = width, width
+                        while not fits(text_size, hi):
+                            hi *= 1.5
+                            if hi > 2000:
+                                raise HTTPException(400, 'the content does not fit any sensible triangle')
+                        for _ in range(40):
+                            mid = (lo + hi) / 2
+                            if fits(text_size, mid): hi = mid
+                            else: lo = mid
+                        width = round(hi + 0.05, 1)
+                        notes.append(f'width increased to {width:g} mm to fit the content')
                 if abs(shift - content_shift) >= 0.05:
                     notes.append(f'content moved {abs(shift - content_shift):.1f} mm {"up" if shift > content_shift else "down"} to balance its visual weight')
                 defs['content_shift'] = num('content shift', round(shift, 2), -400, 400)
@@ -290,11 +310,12 @@ async def generate(
         shutil.rmtree(work, ignore_errors=True)
 
 
-def round_layout(text_size, lines, user_shift, n, line_gap, hole_rows, hole_d, csk_d, gap_icon_text, icon_h, icon):
-    """Lay the content of a round sign out exactly as custom_sign.scad does (hole
-    bands, icon, text lines, box centred on the disc), then shift it so the ink
-    centroid sits on the centre, plus the user's own shift. Returns the radius of
-    the smallest circle around the shifted content, and the total shift."""
+def content_boxes(text_size, lines, user_shift, n, line_gap, hole_rows, hole_d, csk_d, gap_icon_text, icon_h, icon):
+    """Lay the content of a round or triangular sign out exactly as custom_sign.scad
+    does (hole bands, icon, text lines, box centred on the shape's centre), then
+    shift it so the ink centroid sits on that centre, plus the user's own shift.
+    Returns the boxes as (width, y_top, y_bottom) relative to the centre after the
+    shift, and the total shift."""
     cap_h = text_size * 1.024
     band_h = max(hole_d, csk_d) + 2
     want_top = hole_rows in ('top', 'top+bottom')
@@ -319,7 +340,40 @@ def round_layout(text_size, lines, user_shift, n, line_gap, hole_rows, hole_d, c
     area = sum(a for a, _ in ink)
     centroid = sum(a * cy for a, cy in ink) / area if area else 0.0
     shift = -centroid + user_shift
-    return max(math.hypot(w / 2, max(abs(y1 + shift), abs(y2 + shift))) for w, y1, y2 in boxes), shift
+    return [(w, y1 + shift, y2 + shift) for w, y1, y2 in boxes], shift
+
+
+def round_radius(boxes):
+    """Radius of the smallest centred circle around the boxes."""
+    return max(math.hypot(w / 2, max(abs(y1), abs(y2))) for w, y1, y2 in boxes)
+
+
+def tri_fits(boxes, width, corner_r, margin, tol=0.3):
+    """Do the boxes (relative to the centroid) sit inside the content area of a
+    rounded equilateral triangle of the given base width? The content area is the
+    plate outline inset by margin, built as custom_sign.scad builds it: the sharp
+    triangle inset by max(corner_r, margin), then rounded by max(corner_r - margin, 0)."""
+    ins, rd = max(corner_r, margin), max(corner_r - margin, 0)
+    side = width - 2 * math.sqrt(3) * ins
+    if side <= 0:
+        return False
+    tri_h = width * math.sqrt(3) / 2
+    base = ins - tri_h / 3                        # y of the inset triangle's base, relative to the centroid
+    verts = [(-side / 2, base), (side / 2, base), (0, base + side * math.sqrt(3) / 2)]
+
+    def signed_dist(px, py):
+        inside, best = True, float('inf')
+        for i in range(3):
+            (ax, ay), (bx, by) = verts[i], verts[(i + 1) % 3]
+            ex, ey = bx - ax, by - ay
+            if ex * (py - ay) - ey * (px - ax) < 0:   # vertices run anticlockwise, so inside is to the left
+                inside = False
+            t = max(0.0, min(1.0, ((px - ax) * ex + (py - ay) * ey) / (ex * ex + ey * ey)))
+            best = min(best, math.hypot(px - (ax + t * ex), py - (ay + t * ey)))
+        return -best if inside else best
+
+    return all(signed_dist(x, y) <= rd - tol
+               for w, y1, y2 in boxes for x in (-w / 2, w / 2) for y in (y1, y2))
 
 
 def join_stl(a: bytes, b: bytes):

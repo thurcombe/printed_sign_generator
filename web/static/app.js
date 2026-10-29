@@ -46,9 +46,10 @@ form.addEventListener('change', markStale);
 // Show only the fields that apply to the chosen shape.
 const shapeSel = form.elements.shape;
 function applyShape() {
-  const round = shapeSel.value === 'round';
-  document.querySelectorAll('.rect-only').forEach(el => { el.style.display = round ? 'none' : ''; });
-  document.querySelectorAll('.round-only').forEach(el => { el.style.display = round ? '' : 'none'; });
+  const shape = shapeSel.value;
+  document.querySelectorAll('[data-shapes]').forEach(el => {
+    el.style.display = el.dataset.shapes.split(' ').includes(shape) ? '' : 'none';
+  });
 }
 shapeSel.addEventListener('change', applyShape);
 applyShape();

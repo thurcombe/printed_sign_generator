@@ -40,13 +40,13 @@ gap_icon_text = 3.0;
 icon_flip = false;
 
 /* [Plate] */
-// "rectangle": width is set, height follows the content. "round": a disc of the given diameter with the content centred (hole_x is ignored; holes go top and bottom centre, or in side tabs).
-shape = "rectangle"; // [rectangle, round]
-// Overall width of a rectangle. Height is worked out from the content.
+// "rectangle": width is set, height follows the content. "round": a disc of the given diameter with the content centred. "triangle": a rounded equilateral triangle, apex up, width is the base, content centred on the centroid. Round and triangle ignore hole_x: holes go top and bottom centre, or in side tabs.
+shape = "rectangle"; // [rectangle, round, triangle]
+// Overall width of a rectangle (height follows the content) or base of a triangle.
 width = 180.0;
 // Diameter of a round sign. Must be big enough for the content; the web UI works this out, here check the preview.
 diameter = 180.0;
-// Outer corner radius of a rectangle
+// Outer corner radius of a rectangle or triangle
 corner_r = 10.8;
 // "raised": the border, icon and text stand proud of the plate. "flush": they are inlaid into the plate so the face is flat, for a sign that sits against a window (needs a multi-material print; export base and raised separately).
 style = "raised"; // [raised, flush]
@@ -86,32 +86,42 @@ n_lines = len(lines);
 cap_h = text_size * cap_ratio;
 text_block_h = n_lines * cap_h + max(0, n_lines - 1) * line_gap;
 is_round = shape == "round";
-pw = is_round ? diameter : width;                    // plate width
-has_holes = is_round || len(hole_x) > 0;
+is_tri = shape == "triangle";
+centred = is_round || is_tri;                     // content box centred on the shape rather than stacked from the top
+pw = is_round ? diameter : width;                 // plate width (base of a triangle)
+tri_h = pw * sqrt(3) / 2;                         // height of the sharp triangle; rounding the apex takes corner_r off the top
+has_holes = centred || len(hole_x) > 0;
 want_top = has_holes && (hole_rows == "top" || hole_rows == "top+bottom");
 want_bot = has_holes && (hole_rows == "bottom" || hole_rows == "top+bottom");
 want_tabs = hole_rows == "middle";
 tab_r = max(hole_d, csk_d) / 2 + tab_pad;         // radius of a side tab; its hole sits at its centre
-tab_w = want_tabs ? 2 * tab_r : 0;                // how far each tab sticks out
-overall_w = pw + 2 * tab_w;
 band_h = max(hole_d, csk_d) + 2;                  // height reserved for a hole row
 // Top holes sit beside the icon when there is one, so they only need a band of their own without it.
-// On a round sign the hole is a single one at the centre, so it always has its own band.
-top_band = (want_top && (is_round || !show_icon)) ? band_h + gap_icon_text : 0;
+// On a round or triangular sign the hole is a single one at the centre, so it always has its own band.
+top_band = (want_top && (centred || !show_icon)) ? band_h + gap_icon_text : 0;
 bot_band = want_bot ? band_h + line_gap : 0;
 content_h = top_band + (show_icon ? icon_h + gap_icon_text : 0) + text_block_h + bot_band;
 margin = ring_inset + ring_w + inner_pad;      // plate edge -> content
-height = is_round ? diameter : content_h + 2 * margin;
-inner_w = pw - 2 * margin;                        // inner width, or inner diameter when round
-content_top = (is_round ? height / 2 + content_h / 2 : height - margin) + content_shift;
+height = is_round ? diameter : is_tri ? tri_h - corner_r : content_h + 2 * margin;
+tab_y = is_tri ? tri_h / 3 : height / 2;          // height of the middle tabs
+// x of the plate edge at height y, on the left (side -1) or right (+1)
+function edge_x(side, y) = is_tri ? pw / 2 + side * (tri_h - y) / sqrt(3) : (side < 0 ? 0 : pw);
+plate_x0 = is_tri ? corner_r * (sqrt(3) - 1) : 0; // rounding the base corners of a triangle pulls its extent in
+plate_x1 = pw - plate_x0;
+x_min = want_tabs ? min(plate_x0, edge_x(-1, tab_y) - 2 * tab_r) : plate_x0;   // tabs stick out 2 * tab_r from the edge
+x_max = want_tabs ? max(plate_x1, edge_x(1, tab_y) + 2 * tab_r) : plate_x1;
+overall_w = x_max - x_min;                        // extent of the plate for the build plate check
+inner_w = pw - 2 * margin * (is_tri ? sqrt(3) : 1);   // inner width (base of the inner triangle), or inner diameter when round
+content_mid = is_round ? height / 2 : tri_h / 3;  // where the content box is centred on a round or triangular sign
+content_top = (centred ? content_mid + content_h / 2 : height - margin) + content_shift;
 icon_y = content_top - top_band - icon_h;         // bottom of the icon
 text_top = show_icon ? icon_y - gap_icon_text : content_top - top_band;   // top of the first text line
 hole_ys = concat(
-    want_top ? [(show_icon && !is_round) ? content_top - icon_h / 2 : content_top - band_h / 2] : [],
+    want_top ? [(show_icon && !centred) ? content_top - icon_h / 2 : content_top - band_h / 2] : [],
     want_bot ? [content_top - content_h + band_h / 2] : []);
-hole_xs = is_round ? [pw / 2] : hole_x;
+hole_xs = centred ? [pw / 2] : hole_x;
 // Every hole as [x, y]
-hole_pts = want_tabs ? [[-tab_r, height / 2], [pw + tab_r, height / 2]]
+hole_pts = want_tabs ? [[edge_x(-1, tab_y) - tab_r, tab_y], [edge_x(1, tab_y) + tab_r, tab_y]]
                      : [for (x = hole_xs, y = hole_ys) [x, y]];
 eps = 0.01;
 
@@ -128,20 +138,27 @@ module rrect(w, h, r) {
     offset(r = r) offset(delta = -r) square([w, h]);
 }
 
-// Plate outline inset by d from the edge: rounded rectangle or disc.
+module tri_2d() {
+    polygon([[0, 0], [pw, 0], [pw / 2, tri_h]]);
+}
+
+// Plate outline inset by d from the edge: rounded rectangle, disc or rounded triangle.
 module outline_2d(d = 0) {
     if (is_round)
         translate([pw / 2, height / 2]) circle(d = diameter - 2 * d);
+    else if (is_tri)
+        offset(r = max(corner_r - d, 0)) offset(delta = -max(corner_r, d)) tri_2d();
     else
         translate([d, d]) rrect(pw - 2 * d, height - 2 * d, corner_r - d);
 }
 
 // Rounded mounting tab on one side, blended into the plate edge. side = -1 left, +1 right.
 module tab_2d(side) {
-    cx = side < 0 ? -tab_r : pw + tab_r;
+    ex = edge_x(side, tab_y);
     hull() {
-        translate([cx, height / 2]) circle(r = tab_r);
-        translate([side < 0 ? 0 : pw - 1, height / 2 - tab_r]) square([1, 2 * tab_r]);
+        translate([ex + side * tab_r, tab_y]) circle(r = tab_r);
+        // anchor strip just inside the plate edge, tab_r wide so a slanted edge is still covered
+        translate([side < 0 ? ex : ex - tab_r, tab_y - tab_r]) square([tab_r, 2 * tab_r]);
     }
 }
 

@@ -29,10 +29,12 @@ Window > Customizer. The main ones:
   for you (see below).
 - `font` is a fontconfig name. `fc-list` shows what is installed.
 - `show_icon`, `icon_h`, `icon_flip` control the icon.
-- `shape` is `rectangle` (set `width`, the height follows the content) or
-  `round` (a disc of `diameter` with the content centred). OpenSCAD cannot
-  measure the text, so with `round` pick a diameter and check the preview;
-  the web UI works the diameter out, or shrinks the text to fit it.
+- `shape` is `rectangle` (set `width`, the height follows the content),
+  `round` (a disc of `diameter` with the content centred) or `triangle` (a
+  rounded equilateral triangle, apex up, `width` is the base, content centred
+  on the centroid). OpenSCAD cannot measure the text, so with `round` or
+  `triangle` pick a size and check the preview; the web UI works the size
+  out, or shrinks the text to fit it.
 - `width`, `corner_r`, `base_t`, `raise_t`, `ring_inset`, `ring_w`,
   `inner_pad` set the plate and border. `content_shift` moves the content
   and its holes up (or down when negative) for optical centring.
@@ -46,9 +48,11 @@ Window > Customizer. The main ones:
   at the bottom in a band below the text, both (for tall signs), or
   `middle`: one hole in a rounded tab on each outer side of the sign at
   mid-height, clear of the content. `tab_pad` sets the material around a
-  tab's hole. The echoed plate size includes the tabs. On a round sign
-  `hole_x` is ignored: the top and bottom rows are a single hole each on the
-  centre line, in a band above or below the content.
+  tab's hole. The echoed plate size includes the tabs. On a round or
+  triangular sign `hole_x` is ignored: the top and bottom rows are a single
+  hole each on the centre line, in a band above or below the content, and
+  the middle tabs sit on the slanted edges of a triangle level with the
+  content.
 
 ## Changing the icon
 
@@ -118,7 +122,8 @@ bigger to fit it, as chosen in the form; a note under the result says what it
 did. For a rectangle that means the longest line against the inner width; for
 a round sign every line, the icon and the hole bands must sit inside the inner
 circle, so lines near the top and bottom get less room than those through the
-middle. A round sign is also balanced on the centroid of its ink rather than
+middle; for a triangle they must sit inside the inner triangle, which narrows
+towards the apex. Round and triangular signs are also balanced on the centroid of their ink rather than
 on its outline, because an icon's outline is mostly empty space above a dense
 block of text and the content looks low otherwise; the nudge field adds to
 that shift. The download is only
