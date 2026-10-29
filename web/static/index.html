@@ -3,14 +3,22 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Printed sign generator</title>
+<title>nullpacket sign generator</title>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 <style>
   :root { --bg:#f4f4f2; --fg:#1b1b1b; --card:#fff; --line:#d6d6d2; --accent:#1f5fbf; --muted:#666; --yellow:#ffd203; }
   @media (prefers-color-scheme: dark) { :root { --bg:#161616; --fg:#e8e8e8; --card:#202020; --line:#3a3a3a; --accent:#6ea1ff; --muted:#9a9a9a; } }
   * { box-sizing:border-box; }
   body { margin:0; font:15px/1.4 system-ui, sans-serif; background:var(--bg); color:var(--fg); }
-  header { padding:14px 20px; border-bottom:1px solid var(--line); background:var(--card); }
+  header { display:flex; align-items:center; gap:14px; padding:10px 20px; border-bottom:1px solid var(--line); background:var(--card); }
+  header .brand { display:flex; align-items:center; gap:10px; color:var(--fg); }
+  header .brand img { display:block; }
+  header .mark { height:40px; }
+  header .wordmark { height:13px; }
+  header .sep { width:1px; height:28px; background:var(--line); }
   header h1 { margin:0; font-size:18px; font-weight:600; }
+  /* the SVGs are black ink on transparent; show them in the page's text colour */
+  @media (prefers-color-scheme: dark) { header .brand img { filter:invert(1); } }
   main { display:grid; grid-template-columns:minmax(300px,420px) 1fr; gap:20px; padding:20px; max-width:1400px; margin:0 auto; }
   @media (max-width:800px) { main { grid-template-columns:1fr; } }
   fieldset { border:1px solid var(--line); border-radius:8px; margin:0 0 14px; padding:10px 14px 12px; background:var(--card); }
@@ -48,7 +56,11 @@
 </style>
 </head>
 <body>
-<header><h1>Printed sign generator</h1></header>
+<header>
+  <div class="brand"><img class="mark" src="/static/mark.svg" alt="nullpacket"><img class="wordmark" src="/static/wordmark.svg" alt=""></div>
+  <div class="sep"></div>
+  <h1>Printed sign generator</h1>
+</header>
 <main>
 <form id="f">
   <fieldset><legend>Text</legend>
