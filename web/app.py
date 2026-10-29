@@ -104,6 +104,7 @@ async def generate(
     icon_flip: bool = Form(False),
     width: float = Form(180.0),
     corner_r: float = Form(10.8),
+    style: str = Form('raised'),
     base_t: float = Form(3.0),
     raise_t: float = Form(1.0),
     ring_inset: float = Form(4.2),
@@ -127,6 +128,10 @@ async def generate(
         raise HTTPException(400, 'font name has unexpected characters')
     if hole_rows not in ('none', 'top', 'bottom', 'top+bottom', 'middle'):
         raise HTTPException(400, 'hole rows must be top, bottom, top+bottom or middle')
+    if style not in ('raised', 'flush'):
+        raise HTTPException(400, 'style must be raised or flush')
+    if style == 'flush' and raise_t >= base_t:
+        raise HTTPException(400, 'flush style needs the inlay depth (raised height) smaller than the base thickness')
     if fit not in ('shrink', 'widen', 'none'):
         raise HTTPException(400, 'fit must be shrink, widen or none')
     if csk_d and csk_d < hole_d:
@@ -161,6 +166,7 @@ async def generate(
         'icon_flip': 'true' if icon_flip else 'false',
         'width': num('width', width, 20, 400),
         'corner_r': num('corner radius', corner_r, 0, 50),
+        'style': scad_str(style),
         'base_t': num('base thickness', base_t, 0.4, 20),
         'raise_t': num('raised height', raise_t, 0.2, 10),
         'ring_inset': num('ring inset', ring_inset, 0, 30),
@@ -170,7 +176,6 @@ async def generate(
         'hole_rows': scad_str(hole_rows),
         'hole_d': num('hole diameter', hole_d, 0.5, 20),
         'csk_d': num('countersink diameter', csk_d, 0, 30),
-        'part': '"both"',
     }
 
     work = Path(tempfile.mkdtemp(prefix='sign-'))
@@ -202,29 +207,51 @@ async def generate(
             shutil.copy(DEFAULT_ICON, icon_path)
         defs['icon_file'] = scad_str(str(icon_path))
 
-        out = work / 'custom_sign.stl'
-        cmd = [OPENSCAD, '-o', str(out)]
-        for k, v in defs.items():
-            cmd += ['-D', f'{k}={v}']
-        cmd.append(str(SCAD))
-        r = await run(cmd, RENDER_TIMEOUT)
-        if r.returncode != 0 or not out.exists():
-            err = [l for l in r.stderr.splitlines() if 'ERROR' in l or 'WARNING' in l]
-            raise HTTPException(500, 'OpenSCAD failed: ' + ('; '.join(err) or r.stderr.strip()[-500:]))
-        warnings = [l.replace('WARNING: ', '') for l in r.stderr.splitlines() if l.startswith('WARNING')]
-        m = re.search(r'ECHO: "plate ([\d.]+) x ([\d.]+) mm', r.stderr)
+        async def render(part):
+            out = work / f'{part}.stl'
+            cmd = [OPENSCAD, '--export-format', 'binstl', '-o', str(out)]
+            for k, v in {**defs, 'part': scad_str(part)}.items():
+                cmd += ['-D', f'{k}={v}']
+            cmd.append(str(SCAD))
+            r = await run(cmd, RENDER_TIMEOUT)
+            if r.returncode != 0 or not out.exists():
+                err = [l for l in r.stderr.splitlines() if 'ERROR' in l or 'WARNING' in l]
+                raise HTTPException(500, 'OpenSCAD failed: ' + ('; '.join(err) or r.stderr.strip()[-500:]))
+            return out.read_bytes(), r.stderr
+
+        if style == 'flush':
+            # The inlay and the plate meet at the face, so a union would be a plain slab.
+            # Render the two bodies separately and ship them as two shells in one STL;
+            # the slicer splits them into parts and takes a filament for each.
+            (base_stl, log), (inlay_stl, _) = await asyncio.gather(render('base'), render('raised'))
+            stl, inlay_from = join_stl(base_stl, inlay_stl)
+        else:
+            stl, log = await render('both')
+            inlay_from = ''
+        warnings = [l.replace('WARNING: ', '') for l in log.splitlines() if l.startswith('WARNING')]
+        m = re.search(r'ECHO: "plate ([\d.]+) x ([\d.]+) mm', log)
         size = f'{float(m.group(1)):.1f} x {float(m.group(2)):.1f} mm' if m else ''
         headers = {
             'Content-Disposition': 'attachment; filename="custom_sign.stl"',
             'X-Plate-Size': size,
             'X-Text-Size': f'{text_size:g}',
             'X-Fit': fit_note,
+            'X-Inlay-From': str(inlay_from),
             'X-Warnings': json.dumps(warnings),
-            'Access-Control-Expose-Headers': 'X-Plate-Size, X-Text-Size, X-Fit, X-Warnings',
+            'Access-Control-Expose-Headers': 'X-Plate-Size, X-Text-Size, X-Fit, X-Inlay-From, X-Warnings',
         }
-        return Response(out.read_bytes(), media_type='model/stl', headers=headers)
+        return Response(stl, media_type='model/stl', headers=headers)
     finally:
         shutil.rmtree(work, ignore_errors=True)
+
+
+def join_stl(a: bytes, b: bytes):
+    """Concatenate two binary STLs into one with two shells. Returns the file and
+    the index of the first triangle that came from the second file."""
+    na = struct.unpack_from('<I', a, 80)[0]
+    nb = struct.unpack_from('<I', b, 80)[0]
+    body = a[84:84 + na * 50] + b[84:84 + nb * 50]
+    return b'custom_sign'.ljust(80, b'\0') + struct.pack('<I', na + nb) + body, na
 
 
 async def measure_lines(lines, font, text_size):

@@ -75,7 +75,7 @@ form.addEventListener('submit', async (e) => {
     const warns = JSON.parse(r.headers.get('X-Warnings') || '[]');
     warnEl.textContent = warns.join(' | ');
     status.textContent = 'Rendered. Download is up to date with the settings.';
-    await preview(await blob.arrayBuffer());
+    await preview(await blob.arrayBuffer(), parseInt(r.headers.get('X-Inlay-From') || '', 10));
   } catch (err) {
     status.textContent = err.message;
     status.className = 'err';
@@ -84,7 +84,8 @@ form.addEventListener('submit', async (e) => {
   }
 });
 
-async function preview(buf) {
+// inlayFrom: for a flush sign, the index of the first triangle of the black inlay shell (NaN otherwise).
+async function preview(buf, inlayFrom) {
   let THREE, STLLoader, OrbitControls;
   try {
     THREE = await import('three');
@@ -117,11 +118,13 @@ async function preview(buf) {
   geom.computeVertexNormals();
   geom.computeBoundingBox();
   const bb = geom.boundingBox, c = new THREE.Vector3(); bb.getCenter(c);
-  // colour by height: base plate yellow, raised features black
+  // Flush: everything from the inlay shell onwards is black. Raised: colour by height,
+  // base plate yellow, raised features black.
   const topZ = bb.max.z, pos = geom.attributes.position, colors = new Float32Array(pos.count * 3);
   for (let i = 0; i < pos.count; i++) {
-    const raised = pos.getZ(i) > topZ - 0.05 && isRaisedTri(pos, i, topZ);
-    colors.set(raised ? [0.08, 0.08, 0.08] : [1.0, 0.82, 0.01], i * 3);
+    const black = inlayFrom >= 0 ? i >= inlayFrom * 3
+                                 : pos.getZ(i) > topZ - 0.05 && isRaisedTri(pos, i, topZ);
+    colors.set(black ? [0.08, 0.08, 0.08] : [1.0, 0.82, 0.01], i * 3);
   }
   geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   const mesh = new THREE.Mesh(geom, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.05 }));

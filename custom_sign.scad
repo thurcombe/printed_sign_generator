@@ -44,9 +44,11 @@ icon_flip = false;
 width = 180.0;
 // Outer corner radius
 corner_r = 10.8;
+// "raised": the border, icon and text stand proud of the plate. "flush": they are inlaid into the plate so the face is flat, for a sign that sits against a window (needs a multi-material print; export base and raised separately).
+style = "raised"; // [raised, flush]
 // Base plate thickness (yellow)
 base_t = 3.0;
-// Height of the raised black features above the plate
+// Height of the black features above the plate (raised), or their depth into it (flush)
 raise_t = 1.0;
 // Border ring: distance from plate edge to ring
 ring_inset = 4.2;
@@ -161,6 +163,11 @@ module raised_2d() {
     text_2d();
 }
 
+flush = style == "flush";
+assert(!flush || raise_t < base_t, "flush style needs raise_t (inlay depth) smaller than base_t");
+if (flush && part == "both")
+    echo("flush style: export part=\"base\" and part=\"raised\" separately; a union of both is a plain slab");
+
 module base() {
     color([1, 0.82, 0.01]) difference() {
         linear_extrude(base_t) plate_2d();
@@ -168,12 +175,18 @@ module base() {
             for (p = hole_pts)
                 translate([p[0], p[1], base_t - (csk_d - hole_d) / 2])
                     cylinder(d1 = hole_d, d2 = csk_d + 2 * eps, h = (csk_d - hole_d) / 2 + eps);
+        // flush: pocket for the inlay, open at the top face
+        if (flush)
+            translate([0, 0, base_t - raise_t]) linear_extrude(raise_t + eps) raised_2d();
     }
 }
 
 module raised() {
     color([0.08, 0.08, 0.08])
-        translate([0, 0, base_t - eps]) linear_extrude(raise_t + eps) raised_2d();
+        if (flush)
+            translate([0, 0, base_t - raise_t]) linear_extrude(raise_t) raised_2d();
+        else
+            translate([0, 0, base_t - eps]) linear_extrude(raise_t + eps) raised_2d();
 }
 
 if (part == "base" || part == "both") base();

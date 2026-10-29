@@ -31,6 +31,10 @@ Window > Customizer. The main ones:
 - `show_icon`, `icon_h`, `icon_flip` control the icon.
 - `width`, `corner_r`, `base_t`, `raise_t`, `ring_inset`, `ring_w`,
   `inner_pad` set the plate and border.
+- `style` is `raised` (the border, icon and text stand `raise_t` proud of
+  the plate) or `flush` (they are inlaid `raise_t` deep into the plate so the
+  face is flat, for a sign that sits against a window). `flush` needs
+  `raise_t` smaller than `base_t` and a multi-material print, see below.
 - `hole_x` is a list of hole X positions for the top and bottom rows, with
   `hole_d` and `csk_d` for the hole and countersink. `hole_rows` is `none`
   for a plain plate, or puts the holes at the top (beside the icon, or in a band above the text when there is no icon),
@@ -88,11 +92,19 @@ For a multi-material printer, load the base and raised STLs as one object and
 assign a colour to each. For a single extruder, print `both` and swap filament
 at the top of the base plate (3 mm by default).
 
+With `style="flush"` always export `base` and `raised` separately: the inlay
+fills a pocket in the plate, so a union of the two is a featureless slab.
+Print face up with a filament per part. The design reads correctly from the
+top face, so that is the face to put against the glass.
+
 ## Web UI (container)
 
 A small web front end wraps the same `.scad` and tracer: fill in the text and
 plate settings, optionally upload an image or SVG for the icon, press Render,
-check the preview, and download the combined STL. Because OpenSCAD cannot
+check the preview, and download the combined STL. For the flush style the
+STL holds two shells, plate and inlay; in the slicer split the object into
+parts (Bambu Studio and OrcaSlicer: right click, Split to parts; PrusaSlicer:
+Split to parts) and assign a filament to each. Because OpenSCAD cannot
 measure text, the app first renders the text lines on their own to measure
 them, then either shrinks the text size so the longest line fits or widens
 the sign to fit it, as chosen in the form; a note under the result says what
