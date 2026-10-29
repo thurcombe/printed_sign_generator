@@ -50,7 +50,14 @@ RUN apk add --no-cache py3-pip \
 WORKDIR /app
 COPY custom_sign.scad icon.svg trace_silhouette.py ./
 COPY web ./web
-RUN adduser -D -H sign && chown -R sign:sign /app
+# Commit the image was built from (and the tag, when built from one), shown in the
+# page footer: --build-arg GIT_SHA=$(git rev-parse HEAD). Empty means a dev build.
+# Written by a RUN rather than an ENV because podman's build cache does not
+# distinguish ENV layers by the build-arg value, so a rebuild kept the old commit.
+ARG GIT_SHA=
+ARG GIT_REF=
+RUN printf '%s\n%s\n' "$GIT_SHA" "$GIT_REF" > /app/VERSION \
+ && adduser -D -H sign && chown -R sign:sign /app
 USER sign
 ENV SIGN_PYTHON=/opt/venv/bin/python HOME=/tmp PYTHONUNBUFFERED=1
 EXPOSE 8000

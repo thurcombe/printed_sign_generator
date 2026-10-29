@@ -64,6 +64,9 @@ jobs:
           push: ${{ env.PUSH == 'true' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+            GIT_REF=${{ github.ref_type == 'tag' && github.ref_name || '' }}
           pull: true
           # The OpenSCAD compile stage is the slow part; reuse it from the Actions cache
           # except on the weekly scheduled run, which rebuilds everything from scratch.

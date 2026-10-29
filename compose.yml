@@ -1,6 +1,9 @@
 services:
   sign:
-    build: .
+    build:
+      context: .
+      args:
+        GIT_SHA: "${GIT_SHA:-}"
     image: printed_sign_generator
     ports:
       - "8000:8000"

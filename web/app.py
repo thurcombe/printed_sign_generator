@@ -38,7 +38,20 @@ class NoCacheStatic(StaticFiles):
 app.mount('/static', NoCacheStatic(directory=HERE / 'static'), name='static')
 # Version tag for the script URL, from the file's own hash, so a changed app.js is always refetched.
 import hashlib
+from html import escape as html_escape
 ASSET_VERSION = hashlib.sha1((HERE / 'static' / 'app.js').read_bytes()).hexdigest()[:10]
+# Baked in by the Dockerfile from --build-arg GIT_SHA / GIT_REF as two lines of
+# /app/VERSION (commit, then tag); missing or empty means a dev build.
+def _version():
+    try:
+        commit, ref = ((ROOT / 'VERSION').read_text().splitlines() + ['', ''])[:2]
+    except OSError:
+        return '', ''
+    return (commit.strip() if re.fullmatch(r'[0-9a-f]{7,40}', commit.strip()) else ''), ref.strip()
+COMMIT, REF = _version()
+REPO_URL = 'https://github.com/thurcombe/printed_sign_generator'
+VERSION_HTML = (f'<a href="{REPO_URL}/commit/{COMMIT}" title="{COMMIT}">{html_escape(REF) + " " if REF else ""}{COMMIT[:7]}</a>'
+                if COMMIT else 'dev build')
 
 
 def installed_fonts():
@@ -90,7 +103,8 @@ def parse_holes(s: str, width: float):
 @app.get('/', response_class=HTMLResponse)
 def index():
     html = (HERE / 'static' / 'index.html').read_text()
-    return HTMLResponse(html.replace('__FONTS__', json.dumps(FONTS)).replace('__ASSET_VERSION__', ASSET_VERSION),
+    return HTMLResponse(html.replace('__FONTS__', json.dumps(FONTS)).replace('__ASSET_VERSION__', ASSET_VERSION)
+                            .replace('__VERSION__', VERSION_HTML),
                         headers={'Cache-Control': 'no-cache'})
 
 
@@ -586,4 +600,4 @@ async def run(cmd, timeout):
 
 @app.get('/healthz')
 def healthz():
-    return {'ok': True, 'fonts': len(FONTS)}
+    return {'ok': True, 'fonts': len(FONTS), 'commit': COMMIT or None, 'ref': REF or None}

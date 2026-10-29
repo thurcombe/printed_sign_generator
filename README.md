@@ -159,11 +159,16 @@ that is deleted afterwards. Nothing is stored.
 Build and run with podman or docker:
 
 ```sh
-podman build -t printed_sign_generator .
+podman build -t printed_sign_generator --build-arg GIT_SHA=$(git rev-parse HEAD) .
 podman run --rm -p 8000:8000 --read-only --tmpfs /tmp printed_sign_generator
 # or
 podman compose up --build
 ```
+
+`GIT_SHA` is shown in the page footer as a link to the commit (and reported by
+`/healthz`); leave it out and the footer says "dev build". With compose, export
+`GIT_SHA=$(git rev-parse HEAD)` first. The Actions workflow passes the commit,
+and the tag name when it builds from a tag.
 
 Then open http://localhost:8000. The image is Alpine based and kept small:
 OpenSCAD 2021.01 is built from source in the first stage as a headless
