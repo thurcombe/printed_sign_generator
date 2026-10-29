@@ -56,10 +56,10 @@ ring_w = 3.7;
 inner_pad = 4.0;
 
 /* [Mounting holes] */
-// Hole X positions (list). Use [] for no holes.
+// Hole X positions (list) for the top and bottom rows. [] also gives no holes.
 hole_x = [24, 156];
-// Where the holes go. "top" sits beside the icon (or in a band above the text if there is no icon); "bottom" adds a band below the text; use both for tall signs. "middle" puts one hole in a rounded tab on each side of the sign at mid-height, clear of the content (hole_x is then ignored).
-hole_rows = "top"; // [top, bottom, top+bottom, middle]
+// Where the holes go. "none" gives a plain plate. "top" sits beside the icon (or in a band above the text if there is no icon); "bottom" adds a band below the text; use both for tall signs. "middle" puts one hole in a rounded tab on each side of the sign at mid-height, clear of the content (hole_x is then ignored).
+hole_rows = "top"; // [none, top, bottom, top+bottom, middle]
 // Material around the hole (or countersink) in a middle tab
 tab_pad = 3.0;
 // Through hole diameter (4.2 = M4 / #8 screw clearance)

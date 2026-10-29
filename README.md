@@ -31,9 +31,9 @@ Window > Customizer. The main ones:
 - `show_icon`, `icon_h`, `icon_flip` control the icon.
 - `width`, `corner_r`, `base_t`, `raise_t`, `ring_inset`, `ring_w`,
   `inner_pad` set the plate and border.
-- `hole_x` is a list of hole X positions (`[]` for none), with `hole_d` and
-  `csk_d` for the hole and countersink. `hole_rows` puts the holes at the
-  top (beside the icon, or in a band above the text when there is no icon),
+- `hole_x` is a list of hole X positions for the top and bottom rows, with
+  `hole_d` and `csk_d` for the hole and countersink. `hole_rows` is `none`
+  for a plain plate, or puts the holes at the top (beside the icon, or in a band above the text when there is no icon),
   at the bottom in a band below the text, both (for tall signs), or
   `middle`: one hole in a rounded tab on each outer side of the sign at
   mid-height, clear of the content. `tab_pad` sets the material around a

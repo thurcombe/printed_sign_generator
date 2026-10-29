@@ -125,7 +125,7 @@ async def generate(
         raise HTTPException(400, 'at most 10 lines of text')
     if len(font) > 100 or not re.fullmatch(r'[\w .:=,\-]+', font):
         raise HTTPException(400, 'font name has unexpected characters')
-    if hole_rows not in ('top', 'bottom', 'top+bottom', 'middle'):
+    if hole_rows not in ('none', 'top', 'bottom', 'top+bottom', 'middle'):
         raise HTTPException(400, 'hole rows must be top, bottom, top+bottom or middle')
     if fit not in ('shrink', 'widen', 'none'):
         raise HTTPException(400, 'fit must be shrink, widen or none')
