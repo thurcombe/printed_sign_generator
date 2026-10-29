@@ -36,8 +36,12 @@ Window > Customizer. The main ones:
   `triangle` pick a size and check the preview; the web UI works the size
   out, or shrinks the text to fit it.
 - `width`, `corner_r`, `base_t`, `raise_t`, `ring_inset`, `ring_w`,
-  `inner_pad` set the plate and border. `content_shift` moves the content
-  and its holes up (or down when negative) for optical centring.
+  `inner_pad` set the plate and border.
+- `anchor` places the content block on a round or triangular sign:
+  `centre`, or against the `top` or `bottom` of the content area (on a
+  triangle, `bottom` puts the text along the wide base). `content_shift`
+  then moves the block and its holes up (or down when negative), and
+  `icon_shift` and `text_shift` move only the icon or only the text.
 - `style` is `raised` (the border, icon and text stand `raise_t` proud of
   the plate) or `flush` (they are inlaid `raise_t` deep into the plate so the
   face is flat, for a sign that sits against a window). `flush` needs
@@ -123,10 +127,12 @@ did. For a rectangle that means the longest line against the inner width; for
 a round sign every line, the icon and the hole bands must sit inside the inner
 circle, so lines near the top and bottom get less room than those through the
 middle; for a triangle they must sit inside the inner triangle, which narrows
-towards the apex. Round and triangular signs are also balanced on the centroid of their ink rather than
-on its outline, because an icon's outline is mostly empty space above a dense
-block of text and the content looks low otherwise; the nudge field adds to
-that shift. The download is only
+towards the apex. The content position field then places the block: centred,
+balanced on the centroid of its ink rather than on its outline (an icon's
+outline is mostly empty space above a dense block of text, so the content
+looks low otherwise), or slid down or up as far as everything still fits,
+which on a triangle puts the text along the wide base. The nudge fields add
+to that, for the whole block, the icon alone or the text alone. The download is only
 enabled for the settings currently shown; changing anything marks the preview
 stale until you render again. A build plate size (default 256 x 256 mm)
 is checked against the rendered sign in both orientations and warns if it

@@ -99,12 +99,23 @@ IN 0.6 SECONDS. CAN YOU?</textarea>
       <div><label>Border inset</label><input type="number" name="ring_inset" value="4.2" step="0.1" min="0"></div>
       <div><label>Border width</label><input type="number" name="ring_w" value="3.7" step="0.1" min="0"></div>
     </div>
-    <div class="row">
-      <div><label>Padding inside border (mm)</label><input type="number" name="inner_pad" value="4" step="0.5" min="0"></div>
-      <div><label>Nudge content up (mm, negative is down)</label><input type="number" name="content_shift" value="0" step="0.5"></div>
+    <label>Padding inside border (mm)</label><input type="number" name="inner_pad" value="4" step="0.5" min="0">
+    <div data-shapes="round triangle">
+      <label>Content position</label>
+      <select name="anchor">
+        <option value="centre" selected>Centred, balanced on its visual weight</option>
+        <option value="bottom">As low as it fits (on a triangle: text along the base)</option>
+        <option value="top">As high as it fits</option>
+      </select>
     </div>
+    <div class="row3">
+      <div><label>Nudge all up (mm)</label><input type="number" name="content_shift" value="0" step="0.5"></div>
+      <div><label>Nudge icon up (mm)</label><input type="number" name="icon_shift" value="0" step="0.5"></div>
+      <div><label>Nudge text up (mm)</label><input type="number" name="text_shift" value="0" step="0.5"></div>
+    </div>
+    <small>Negative nudges move down. The holes follow the whole block, not the icon or text nudges.</small>
     <small data-shapes="rectangle">Height is worked out from the content.</small>
-    <small data-shapes="round triangle">The size is checked against the content on Render: the text is shrunk or the sign enlarged as chosen under Text. The content is balanced on its visual weight, not its outline; the nudge adds to that.</small>
+    <small data-shapes="round triangle">The size is checked against the content on Render: the text is shrunk or the sign enlarged as chosen under Text. The nudges add to the chosen position.</small>
   </fieldset>
 
   <fieldset><legend>Mounting holes</legend>

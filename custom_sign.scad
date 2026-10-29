@@ -60,8 +60,14 @@ ring_inset = 4.2;
 ring_w = 3.7;
 // Clearance between the ring and the content
 inner_pad = 4.0;
-// Move the content (and its holes) up (+) or down (-) by this much, for optical centring. The web UI balances a round sign on its visual weight automatically and adds this on top.
+// Where the content block sits on a round or triangular sign: "centre", or against the "top" or "bottom" of the content area (on a triangle, bottom puts the text on the wide base). Ignored on a rectangle, whose height follows the content. The web UI slides the block as far as the content still fits instead.
+anchor = "centre"; // [centre, top, bottom]
+// Move the content block (and its holes) up (+) or down (-) by this much, for optical centring. The web UI balances a round or triangular sign on its visual weight automatically and adds this on top.
 content_shift = 0.0;
+// Move only the icon up (+) or down (-), on top of the block position
+icon_shift = 0.0;
+// Move only the text up (+) or down (-), on top of the block position
+text_shift = 0.0;
 
 /* [Mounting holes] */
 // Hole X positions (list) for the top and bottom rows. [] also gives no holes.
@@ -113,9 +119,15 @@ x_max = want_tabs ? max(plate_x1, edge_x(1, tab_y) + 2 * tab_r) : plate_x1;
 overall_w = x_max - x_min;                        // extent of the plate for the build plate check
 inner_w = pw - 2 * margin * (is_tri ? sqrt(3) : 1);   // inner width (base of the inner triangle), or inner diameter when round
 content_mid = is_round ? height / 2 : tri_h / 3;  // where the content box is centred on a round or triangular sign
-content_top = (centred ? content_mid + content_h / 2 : height - margin) + content_shift;
-icon_y = content_top - top_band - icon_h;         // bottom of the icon
-text_top = show_icon ? icon_y - gap_icon_text : content_top - top_band;   // top of the first text line
+inner_bot = margin;                               // lowest point of the content area of a disc or triangle
+inner_top = is_round ? diameter - margin          // highest point: the disc top, or the rounded apex of the inner triangle
+                     : tri_h - 2 * max(corner_r, margin) + max(corner_r - margin, 0);
+content_top = (!centred ? height - margin
+               : anchor == "bottom" ? inner_bot + content_h
+               : anchor == "top" ? inner_top
+               : content_mid + content_h / 2) + content_shift;
+icon_y = content_top - top_band - icon_h + icon_shift;                       // bottom of the icon
+text_top = content_top - top_band - (show_icon ? icon_h + gap_icon_text : 0) + text_shift;   // top of the first text line
 hole_ys = concat(
     want_top ? [(show_icon && !centred) ? content_top - icon_h / 2 : content_top - band_h / 2] : [],
     want_bot ? [content_top - content_h + band_h / 2] : []);
