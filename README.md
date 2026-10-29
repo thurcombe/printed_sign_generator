@@ -128,7 +128,9 @@ The web UI does this for you and offers two downloads per render:
 ## Web UI (container)
 
 A small web front end wraps the same `.scad` and tracer: fill in the text and
-plate settings, optionally upload an image or SVG for the icon, press Render,
+plate settings, optionally upload an image or SVG for the icon, press Render
+(or tick "Render automatically" to re-render whenever a setting changes; a
+newer change cancels a render still in progress),
 check the preview, and download either the Orca / Bambu project with the
 filaments already assigned or a plain two-shell STL (see Exporting above). Because OpenSCAD cannot
 measure text, the app first renders the text lines on their own to measure

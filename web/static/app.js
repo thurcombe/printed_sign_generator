@@ -33,18 +33,35 @@ function setDownload(enabled) {
   }
 }
 
+// Render automatically on changes: off by default, remembered per browser. A
+// change (a field left, a select or checkbox toggled) starts a render after a
+// short pause; typing in a field only marks the preview stale until it is left.
+const auto = document.getElementById('auto');
+try { auto.checked = localStorage.getItem('autoRender') === '1'; } catch {}
+auto.addEventListener('change', () => {
+  try { localStorage.setItem('autoRender', auto.checked ? '1' : '0'); } catch {}
+  if (auto.checked && !rendered) render();
+});
+let autoTimer = null;
+function scheduleAuto() {
+  if (!auto.checked) return;
+  clearTimeout(autoTimer);
+  autoTimer = setTimeout(render, 400);
+}
+
 // Any change after a render makes the preview and download stale until re-rendered.
 function markStale() {
   if (!rendered) return;
   rendered = false;
   setDownload(false);
-  status.textContent = 'Settings changed since the last render. Press Render to update the preview and download.';
+  status.textContent = auto.checked ? 'Settings changed. Rendering when you leave the field.'
+                                    : 'Settings changed since the last render. Press Render to update the preview and download.';
   status.className = 'stale';
   document.getElementById('viewer').classList.add('stale');
   plate = null; checkFit();
 }
 form.addEventListener('input', markStale);
-form.addEventListener('change', markStale);
+form.addEventListener('change', (e) => { markStale(); scheduleAuto(); });
 
 // Show only the fields that apply to the chosen shape.
 const shapeSel = form.elements.shape;
@@ -57,17 +74,28 @@ function applyShape() {
 shapeSel.addEventListener('change', applyShape);
 applyShape();
 
-form.addEventListener('submit', async (e) => {
-  e.preventDefault();
+form.addEventListener('submit', (e) => { e.preventDefault(); clearTimeout(autoTimer); render(); });
+
+// One render in flight at a time: a newer one aborts the older request (the
+// server then kills its OpenSCAD processes) and only the newest result is shown.
+let inflight = null;
+let renderSeq = 0;
+const stage = document.getElementById('stage');
+async function render() {
+  if (inflight) inflight.abort();
+  const ctl = inflight = new AbortController();
+  const seq = ++renderSeq;
   go.disabled = true;
   rendered = false;
   setDownload(false);
   status.textContent = 'Rendering, this takes a few seconds...';
   status.className = '';
+  stage.classList.add('rendering');
+  document.getElementById('viewer').classList.add('stale');
   sizeEl.textContent = ''; warnEl.textContent = ''; fitEl2.textContent = '';
   const fd = new FormData(form);
   try {
-    const r = await fetch('/generate', { method: 'POST', body: fd });
+    const r = await fetch('/generate', { method: 'POST', body: fd, signal: ctl.signal });
     if (!r.ok) {
       let msg = r.statusText;
       try { const d = (await r.json()).detail; msg = typeof d === 'string' ? d : JSON.stringify(d); } catch {}
@@ -75,6 +103,7 @@ form.addEventListener('submit', async (e) => {
     }
     // The body is the STL followed by the Orca/Bambu project; X-STL-Bytes says where one ends.
     const buf = await r.arrayBuffer();
+    if (seq !== renderSeq) return;                 // superseded while downloading
     const n = parseInt(r.headers.get('X-STL-Bytes') || '', 10) || buf.byteLength;
     const stl = buf.slice(0, n);
     if (dl.href) URL.revokeObjectURL(dl.href);
@@ -96,12 +125,17 @@ form.addEventListener('submit', async (e) => {
     status.textContent = 'Rendered. Download is up to date with the settings.';
     await preview(stl, parseInt(r.headers.get('X-Inlay-From') || '', 10));
   } catch (err) {
+    if (seq !== renderSeq) return;                 // aborted by a newer render; that one reports
     status.textContent = err.message;
     status.className = 'err';
   } finally {
-    go.disabled = false;
+    if (seq === renderSeq) {
+      inflight = null;
+      go.disabled = false;
+      stage.classList.remove('rendering');
+    }
   }
-});
+}
 
 // inlayFrom: the index of the first triangle of the black shell (NaN falls back to colouring by height).
 async function preview(buf, inlayFrom) {

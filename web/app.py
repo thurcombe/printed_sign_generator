@@ -7,7 +7,7 @@ import asyncio, json, math, os, re, shutil, struct, subprocess, tempfile
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from PIL import Image, UnidentifiedImageError
@@ -96,6 +96,59 @@ def index():
 
 @app.post('/generate')
 async def generate(
+    request: Request,
+    lines: str = Form(''),
+    font: str = Form('Nimbus Sans Narrow:style=Bold'),
+    text_size: float = Form(10.35),
+    line_gap: float = Form(3.0),
+    show_icon: bool = Form(False),
+    icon_h: float = Form(30.0),
+    gap_icon_text: float = Form(3.0),
+    icon_flip: bool = Form(False),
+    shape: str = Form('rectangle'),
+    width: float = Form(180.0),
+    diameter: float = Form(180.0),
+    corner_r: float = Form(10.8),
+    style: str = Form('raised'),
+    base_t: float = Form(3.0),
+    raise_t: float = Form(1.0),
+    ring_inset: float = Form(4.2),
+    ring_w: float = Form(3.7),
+    inner_pad: float = Form(4.0),
+    anchor: str = Form('centre'),
+    content_shift: float = Form(0.0),
+    icon_shift: float = Form(0.0),
+    text_shift: float = Form(0.0),
+    hole_x: str = Form(''),   # empty string = no holes (FastAPI treats '' as missing, so no other default)
+    hole_rows: str = Form('top'),
+    fit: str = Form('shrink'),
+    hole_d: float = Form(4.2),
+    csk_d: float = Form(8.2),
+    threshold: float = Form(128),
+    invert: bool = Form(False),
+    icon: Optional[UploadFile] = File(None),
+):
+    """Render, but stop as soon as the browser gives up on the request (the page
+    aborts a render when the settings change again), so abandoned OpenSCAD
+    processes do not pile up."""
+    work = asyncio.ensure_future(_generate(lines=lines, font=font, text_size=text_size, line_gap=line_gap, show_icon=show_icon, icon_h=icon_h, gap_icon_text=gap_icon_text, icon_flip=icon_flip, shape=shape, width=width, diameter=diameter, corner_r=corner_r, style=style, base_t=base_t, raise_t=raise_t, ring_inset=ring_inset, ring_w=ring_w, inner_pad=inner_pad, anchor=anchor, content_shift=content_shift, icon_shift=icon_shift, text_shift=text_shift, hole_x=hole_x, hole_rows=hole_rows, fit=fit, hole_d=hole_d, csk_d=csk_d, threshold=threshold, invert=invert, icon=icon))
+    async def gone():
+        while not await request.is_disconnected():
+            await asyncio.sleep(0.25)
+    watch = asyncio.ensure_future(gone())
+    done, _ = await asyncio.wait({work, watch}, return_when=asyncio.FIRST_COMPLETED)
+    if work in done:
+        watch.cancel()
+        return work.result()
+    work.cancel()
+    try:
+        await work
+    except asyncio.CancelledError:
+        pass
+    raise HTTPException(499, 'client went away')
+
+
+async def _generate(
     lines: str = Form(''),
     font: str = Form('Nimbus Sans Narrow:style=Bold'),
     text_size: float = Form(10.35),
@@ -478,12 +531,16 @@ async def measure_lines(lines, font, text_size, icon=None, icon_h=0.0):
     dict per line with w (width), area (ink area) and cy (ink centroid above the
     baseline). With an icon, the same for it at icon_h tall is appended, cy then
     relative to the icon's centre."""
+    # One extrusion of a 2D union: several top-level 3D objects would be unioned
+    # with CGAL on export, which takes a minute for ten lines; 2D goes through
+    # Clipper and is instant.
     step = 1000.0
-    scad = ''.join(f'translate([0, {i * step}]) linear_extrude(1) text({scad_str(l)}, size={text_size!r}, font={scad_str(font)}, halign="left", valign="baseline", $fn=16);\n'
+    scad = ''.join(f'  translate([0, {i * step}]) text({scad_str(l)}, size={text_size!r}, font={scad_str(font)}, halign="left", valign="baseline", $fn=16);\n'
                    for i, l in enumerate(lines))
     if icon is not None:
-        scad += f'translate([0, {len(lines) * step}]) linear_extrude(1) resize([0, {icon_h!r}], auto=true) import({scad_str(str(icon))}, center=true);\n'
+        scad += f'  translate([0, {len(lines) * step}]) resize([0, {icon_h!r}], auto=true) import({scad_str(str(icon))}, center=true);\n'
         lines = list(lines) + ['']
+    scad = 'linear_extrude(1) union() {\n' + scad + '}\n'
     work = Path(tempfile.mkdtemp(prefix='measure-'))
     try:
         src, out = work / 'm.scad', work / 'm.stl'
@@ -520,6 +577,10 @@ async def run(cmd, timeout):
     except asyncio.TimeoutError:
         proc.kill()
         raise HTTPException(504, f'{Path(cmd[0]).name} took longer than {timeout}s')
+    except asyncio.CancelledError:                # the request was abandoned: take the process with it
+        proc.kill()
+        await proc.wait()
+        raise
     return subprocess.CompletedProcess(cmd, proc.returncode, so.decode(errors='replace'), se.decode(errors='replace'))
 
 

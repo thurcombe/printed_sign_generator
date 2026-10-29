@@ -36,7 +36,13 @@
   button { padding:10px 18px; border:0; border-radius:8px; background:var(--accent); color:#fff; font:inherit; font-weight:600; cursor:pointer; }
   button:disabled { opacity:.5; cursor:default; }
   #result { position:sticky; top:20px; }
-  #viewer { width:100%; aspect-ratio:16/9; background:#2a2a2a; border-radius:8px; border:1px solid var(--line); }
+  #stage { position:relative; }
+  #viewer { display:block; width:100%; aspect-ratio:16/9; background:#2a2a2a; border-radius:8px; border:1px solid var(--line); }
+  #overlay { position:absolute; inset:0; display:none; align-items:center; justify-content:center; pointer-events:none;
+             color:#fff; font-size:22px; font-weight:600; letter-spacing:.02em; text-shadow:0 1px 4px rgba(0,0,0,.6); }
+  #stage.rendering #overlay { display:flex; }
+  .auto { display:flex; align-items:center; gap:6px; font-size:14px; color:var(--muted); margin-left:auto; }
+  .auto input { margin:0; }
   #status { margin:10px 0; color:var(--muted); min-height:1.4em; }
   .actions { display:flex; align-items:center; gap:10px; margin-top:10px; flex-wrap:wrap; }
   .actions a { text-decoration:none; }
@@ -171,12 +177,13 @@ IN 0.6 SECONDS. CAN YOU?</textarea>
 </form>
 
 <section id="result">
-  <canvas id="viewer"></canvas>
+  <div id="stage"><canvas id="viewer"></canvas><div id="overlay">Rendering</div></div>
   <div class="actions">
     <button type="submit" form="f" id="go">Render</button>
     <a id="download3mf" download="custom_sign.3mf" class="disabled" aria-disabled="true"><button type="button" disabled>Download 3MF for Orca / Bambu</button></a>
     <a id="download" download="custom_sign.stl" class="disabled" aria-disabled="true"><button type="button" disabled>Download STL</button></a>
     <span id="size"></span>
+    <label class="auto" title="Render whenever a setting changes (after you leave the field)"><input type="checkbox" id="auto"> Render automatically</label>
   </div>
   <div class="bed">
     <label for="bed_x">Build plate (mm)</label>
@@ -212,8 +219,8 @@ IN 0.6 SECONDS. CAN YOU?</textarea>
   if (!FONTS.includes(preferred)) { const o = document.createElement('option'); o.value = o.textContent = preferred; sel.prepend(o); o.selected = true; }
 </script>
 <script type="importmap">
-{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-               "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js",
+               "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/" } }
 </script>
 <script type="module" src="/static/app.js?v=__ASSET_VERSION__"></script>
 </body>
