@@ -20,6 +20,9 @@
   textarea { min-height:70px; font-family:ui-monospace, monospace; }
   .row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
   .row3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
+  /* cells are columns with the input pinned to the bottom, so a wrapped label never pushes its input out of line */
+  .row > div, .row3 > div { display:flex; flex-direction:column; }
+  .row > div > label, .row3 > div > label { flex:1; }
   .check { display:flex; align-items:center; gap:8px; margin-top:10px; font-size:14px; color:var(--fg); }
   .check input { width:auto; }
   button { padding:10px 18px; border:0; border-radius:8px; background:var(--accent); color:#fff; font:inherit; font-weight:600; cursor:pointer; }
@@ -40,7 +43,7 @@
   #viewer.stale { opacity:.45; }
   .err { color:#c0392b; }
   .warn { color:#b9770e; font-size:13px; }
-  small { color:var(--muted); }
+  small { display:block; color:var(--muted); margin-top:6px; }
 </style>
 </head>
 <body>
@@ -81,41 +84,42 @@ IN 0.6 SECONDS. CAN YOU?</textarea>
   <fieldset><legend>Plate</legend>
     <label>Shape</label>
     <select name="shape">
-      <option value="rectangle" selected>Rectangle: set the width, height follows the content</option>
-      <option value="round">Round: a disc, content centred</option>
-      <option value="triangle">Triangle: rounded, apex up, width is the base</option>
+      <option value="rectangle" selected>Rectangle (height follows the content)</option>
+      <option value="round">Round</option>
+      <option value="triangle">Triangle, apex up (width is the base)</option>
     </select>
     <label>Style</label>
     <select name="style">
-      <option value="raised" selected>Raised: border, icon and text stand proud of the plate</option>
-      <option value="flush">Flush, for a window: inlaid into the plate so the face is flat (multi-material print)</option>
+      <option value="raised" selected>Raised: features stand proud of the plate</option>
+      <option value="flush">Flush: inlaid, flat face (window; multi-material)</option>
     </select>
     <div class="row3">
       <div data-shapes="rectangle triangle"><label>Width (mm)</label><input type="number" name="width" value="180" step="1" min="20"></div>
       <div data-shapes="round"><label>Diameter (mm)</label><input type="number" name="diameter" value="180" step="1" min="20"></div>
       <div data-shapes="rectangle triangle"><label>Corner radius</label><input type="number" name="corner_r" value="10.8" step="0.1" min="0"></div>
       <div><label>Base thickness</label><input type="number" name="base_t" value="3" step="0.2" min="0.4"></div>
-      <div><label>Raised height / inlay depth</label><input type="number" name="raise_t" value="1" step="0.2" min="0.2"></div>
+      <div><label>Raised / inlay (mm)</label><input type="number" name="raise_t" value="1" step="0.2" min="0.2"></div>
       <div><label>Border inset</label><input type="number" name="ring_inset" value="4.2" step="0.1" min="0"></div>
       <div><label>Border width</label><input type="number" name="ring_w" value="3.7" step="0.1" min="0"></div>
     </div>
-    <label>Padding inside border (mm)</label><input type="number" name="inner_pad" value="4" step="0.5" min="0">
-    <div data-shapes="round triangle">
-      <label>Content position</label>
-      <select name="anchor">
-        <option value="centre" selected>Centred, balanced on its visual weight</option>
-        <option value="bottom">As low as it fits (on a triangle: text along the base)</option>
-        <option value="top">As high as it fits</option>
-      </select>
+    <div class="row">
+      <div><label>Padding inside border (mm)</label><input type="number" name="inner_pad" value="4" step="0.5" min="0"></div>
+      <div data-shapes="round triangle">
+        <label>Content position</label>
+        <select name="anchor">
+          <option value="centre" selected>Centred (balanced)</option>
+          <option value="bottom">As low as it fits</option>
+          <option value="top">As high as it fits</option>
+        </select>
+      </div>
     </div>
     <div class="row3">
-      <div><label>Nudge all up (mm)</label><input type="number" name="content_shift" value="0" step="0.5"></div>
-      <div><label>Nudge icon up (mm)</label><input type="number" name="icon_shift" value="0" step="0.5"></div>
-      <div><label>Nudge text up (mm)</label><input type="number" name="text_shift" value="0" step="0.5"></div>
+      <div><label>Nudge all (mm)</label><input type="number" name="content_shift" value="0" step="0.5"></div>
+      <div><label>Nudge icon (mm)</label><input type="number" name="icon_shift" value="0" step="0.5"></div>
+      <div><label>Nudge text (mm)</label><input type="number" name="text_shift" value="0" step="0.5"></div>
     </div>
-    <small>Negative nudges move down. The holes follow the whole block, not the icon or text nudges.</small>
-    <small data-shapes="rectangle">Height is worked out from the content.</small>
-    <small data-shapes="round triangle">The size is checked against the content on Render: the text is shrunk or the sign enlarged as chosen under Text. The nudges add to the chosen position.</small>
+    <small>Nudges move up; negative moves down. The holes follow "all", not the icon or text nudges.</small>
+    <small data-shapes="round triangle">The size is checked against the content on Render: the text is shrunk or the sign enlarged as chosen under Text. "As low as it fits" on a triangle puts the text along the base. The nudges add to the chosen position.</small>
   </fieldset>
 
   <fieldset><legend>Mounting holes</legend>
@@ -127,14 +131,14 @@ IN 0.6 SECONDS. CAN YOU?</textarea>
     <label>Hole rows</label>
     <select name="hole_rows">
       <option value="none">None</option>
-      <option value="top" selected>Top only (beside the icon)</option>
+      <option value="top" selected>Top (beside the icon)</option>
       <option value="top+bottom">Top and bottom (tall signs)</option>
-      <option value="bottom">Bottom only</option>
-      <option value="middle">Middle, in tabs on the outer sides (clear of the text)</option>
+      <option value="bottom">Bottom</option>
+      <option value="middle">Middle, in tabs on the outer sides</option>
     </select>
     <div class="row">
       <div><label>Hole diameter</label><input type="number" name="hole_d" value="4.2" step="0.1" min="0.5"></div>
-      <div><label>Countersink diameter (0 = none)</label><input type="number" name="csk_d" value="8.2" step="0.1" min="0"></div>
+      <div><label>Countersink (0 = none)</label><input type="number" name="csk_d" value="8.2" step="0.1" min="0"></div>
     </div>
   </fieldset>
 
