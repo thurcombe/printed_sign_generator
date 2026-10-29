@@ -112,6 +112,7 @@ async def generate(
     ring_inset: float = Form(4.2),
     ring_w: float = Form(3.7),
     inner_pad: float = Form(4.0),
+    content_shift: float = Form(0.0),
     hole_x: str = Form(''),   # empty string = no holes (FastAPI treats '' as missing, so no other default)
     hole_rows: str = Form('top'),
     fit: str = Form('shrink'),
@@ -163,6 +164,7 @@ async def generate(
         'ring_inset': num('ring inset', ring_inset, 0, 30),
         'ring_w': num('ring width', ring_w, 0, 30),
         'inner_pad': num('inner padding', inner_pad, 0, 30),
+        'content_shift': num('content shift', content_shift, -200, 200),
         'hole_x': '[]' if shape == 'round' else parse_holes(hole_x, width),
         'hole_rows': scad_str(hole_rows),
         'hole_d': num('hole diameter', hole_d, 0.5, 20),
@@ -201,40 +203,51 @@ async def generate(
         # Fit the text: OpenSCAD cannot measure text, so measure the lines (and the
         # icon) with a quick flat render first, then shrink the text or enlarge the
         # plate as asked.
-        fit_note = ''
-        if fit != 'none':
-            widths = await measure_lines(text_lines, font, text_size, icon_path if show_icon else None, icon_h)
-            icon_w = widths.pop() if show_icon else 0.0
+        notes = []
+        if fit != 'none' or shape == 'round':
+            ink = await measure_lines(text_lines, font, text_size, icon_path if show_icon else None, icon_h)
+            icon_ink = ink.pop() if show_icon else None
+            widths = [m['w'] for m in ink]
             if shape == 'round':
+                # Balance the content on its ink centroid rather than its bounding box, then
+                # fit it in the circle. Text scales with its size; bands and the icon do not.
                 layout = dict(n=len(text_lines), line_gap=line_gap, hole_rows=hole_rows, hole_d=hole_d, csk_d=csk_d,
-                              gap_icon_text=gap_icon_text, icon_h=icon_h if show_icon else None, icon_w=icon_w)
-                need = 2 * (round_content_radius(text_size, widths, **layout) + margin)
-                if need > diameter:
+                              gap_icon_text=gap_icon_text, icon_h=icon_h if show_icon else None, icon=icon_ink)
+                measured_size = text_size
+                def at(size):
+                    k = size / measured_size
+                    return round_layout(size, [dict(w=m['w'] * k, area=m['area'] * k * k, cy=m['cy'] * k) for m in ink],
+                                        content_shift, **layout)
+                r, shift = at(text_size)
+                need = 2 * (r + margin)
+                if need > diameter and fit != 'none':
                     if fit == 'shrink':
-                        # Text width scales with text size; bands and the icon do not, so search.
                         lo, hi = 0.5, text_size
-                        if 2 * (round_content_radius(lo, [w * lo / text_size for w in widths], **layout) + margin) > diameter:
+                        if 2 * (at(lo)[0] + margin) > diameter:
                             raise HTTPException(400, f'the icon and holes alone need a diameter of about {need:.0f} mm')
                         for _ in range(40):
                             mid = (lo + hi) / 2
-                            r = round_content_radius(mid, [w * mid / text_size for w in widths], **layout)
-                            if 2 * (r + margin) > diameter * 0.995: hi = mid
+                            if 2 * (at(mid)[0] + margin) > diameter * 0.995: hi = mid
                             else: lo = mid
                         text_size = round(lo, 2)
-                        fit_note = f'text size reduced to {text_size:g} so the content fits the circle'
+                        r, shift = at(text_size)
+                        notes.append(f'text size reduced to {text_size:g} so the content fits the circle')
                     else:
                         diameter = round(need / 0.995 + 0.05, 1)
-                        fit_note = f'diameter increased to {diameter:g} mm to fit the content'
-            else:
+                        notes.append(f'diameter increased to {diameter:g} mm to fit the content')
+                if abs(shift - content_shift) >= 0.05:
+                    notes.append(f'content moved {abs(shift - content_shift):.1f} mm {"up" if shift > content_shift else "down"} to balance its visual weight')
+                defs['content_shift'] = num('content shift', round(shift, 2), -400, 400)
+            elif fit != 'none':
                 widest = max(widths)
                 inner_w = width - 2 * margin
                 if widest > inner_w:
                     if fit == 'shrink':
                         text_size = round(text_size * inner_w / widest * 0.995, 2)
-                        fit_note = f'text size reduced to {text_size:g} so the longest line fits'
+                        notes.append(f'text size reduced to {text_size:g} so the longest line fits')
                     else:
                         width = round(widest / 0.995 + 2 * margin, 1)
-                        fit_note = f'plate widened to {width:g} mm to fit the longest line'
+                        notes.append(f'plate widened to {width:g} mm to fit the longest line')
             defs['text_size'] = num('text size', text_size, 1, 100)
             defs['width'] = num('width', width, 20, 400)
             defs['diameter'] = num('diameter', diameter, 20, 400)
@@ -267,7 +280,7 @@ async def generate(
             'Content-Disposition': 'attachment; filename="custom_sign.stl"',
             'X-Plate-Size': size,
             'X-Text-Size': f'{text_size:g}',
-            'X-Fit': fit_note,
+            'X-Fit': '; '.join(notes),
             'X-Inlay-From': str(inlay_from),
             'X-Warnings': json.dumps(warnings),
             'Access-Control-Expose-Headers': 'X-Plate-Size, X-Text-Size, X-Fit, X-Inlay-From, X-Warnings',
@@ -277,9 +290,11 @@ async def generate(
         shutil.rmtree(work, ignore_errors=True)
 
 
-def round_content_radius(text_size, widths, n, line_gap, hole_rows, hole_d, csk_d, gap_icon_text, icon_h, icon_w):
-    """Radius of the smallest circle around the content of a round sign, laid out
-    exactly as custom_sign.scad does it (hole bands, icon, text lines, centred)."""
+def round_layout(text_size, lines, user_shift, n, line_gap, hole_rows, hole_d, csk_d, gap_icon_text, icon_h, icon):
+    """Lay the content of a round sign out exactly as custom_sign.scad does (hole
+    bands, icon, text lines, box centred on the disc), then shift it so the ink
+    centroid sits on the centre, plus the user's own shift. Returns the radius of
+    the smallest circle around the shifted content, and the total shift."""
     cap_h = text_size * 1.024
     band_h = max(hole_d, csk_d) + 2
     want_top = hole_rows in ('top', 'top+bottom')
@@ -289,16 +304,22 @@ def round_content_radius(text_size, widths, n, line_gap, hole_rows, hole_d, csk_
     content_h = top_band + (icon_h + gap_icon_text if icon_h else 0) + n * cap_h + max(0, n - 1) * line_gap + bot_band
     top = content_h / 2
     boxes = []                                    # (width, y_top, y_bottom) relative to the centre
+    ink = []                                      # (area, centroid y)
     if want_top:
         boxes.append((max(hole_d, csk_d), top, top - band_h))
     y = top - top_band
     if icon_h:
-        boxes.append((icon_w, y, y - icon_h)); y -= icon_h + gap_icon_text
-    for w in widths:
-        boxes.append((w, y, y - cap_h)); y -= cap_h + line_gap
+        boxes.append((icon['w'], y, y - icon_h)); ink.append((icon['area'], y - icon_h / 2 + icon['cy']))
+        y -= icon_h + gap_icon_text
+    for m in lines:
+        boxes.append((m['w'], y, y - cap_h)); ink.append((m['area'], y - cap_h + m['cy']))   # cy is relative to the baseline
+        y -= cap_h + line_gap
     if want_bot:
         boxes.append((max(hole_d, csk_d), -top + band_h, -top))
-    return max(math.hypot(w / 2, max(abs(y1), abs(y2))) for w, y1, y2 in boxes)
+    area = sum(a for a, _ in ink)
+    centroid = sum(a * cy for a, cy in ink) / area if area else 0.0
+    shift = -centroid + user_shift
+    return max(math.hypot(w / 2, max(abs(y1 + shift), abs(y2 + shift))) for w, y1, y2 in boxes), shift
 
 
 def join_stl(a: bytes, b: bytes):
@@ -311,9 +332,11 @@ def join_stl(a: bytes, b: bytes):
 
 
 async def measure_lines(lines, font, text_size, icon=None, icon_h=0.0):
-    """Width in mm of each text line as OpenSCAD will render it: extrude every line
-    at a known y offset, export binary STL, and read the x extent per band. With an
-    icon, its width at icon_h tall is appended."""
+    """Measure each text line as OpenSCAD will render it: extrude every line at a
+    known y offset, export binary STL, and read the top faces per band. Returns a
+    dict per line with w (width), area (ink area) and cy (ink centroid above the
+    baseline). With an icon, the same for it at icon_h tall is appended, cy then
+    relative to the icon's centre."""
     step = 1000.0
     scad = ''.join(f'translate([0, {i * step}]) linear_extrude(1) text({scad_str(l)}, size={text_size!r}, font={scad_str(font)}, halign="left", valign="baseline", $fn=16);\n'
                    for i, l in enumerate(lines))
@@ -331,15 +354,22 @@ async def measure_lines(lines, font, text_size, icon=None, icon_h=0.0):
     finally:
         shutil.rmtree(work, ignore_errors=True)
     n = struct.unpack_from('<I', data, 80)[0]
-    lo = [float('inf')] * len(lines); hi = [float('-inf')] * len(lines)
+    k = len(lines)
+    lo = [float('inf')] * k; hi = [float('-inf')] * k; area = [0.0] * k; moment = [0.0] * k
     for t in range(n):
         base = 84 + t * 50 + 12                      # skip normal
-        for v in range(3):
-            x, y, _ = struct.unpack_from('<fff', data, base + v * 12)
-            i = int(round(y / step))
-            if 0 <= i < len(lines):
-                lo[i] = min(lo[i], x); hi[i] = max(hi[i], x)
-    return [max(0.0, h - l) if h > l else 0.0 for l, h in zip(lo, hi)]
+        v = [struct.unpack_from('<fff', data, base + j * 12) for j in range(3)]
+        i = int(round(v[0][1] / step))
+        if not 0 <= i < k:
+            continue
+        for x, y, _ in v:
+            lo[i] = min(lo[i], x); hi[i] = max(hi[i], x)
+        if all(abs(p[2] - 1.0) < 1e-4 for p in v):  # top face: counts for area and centroid
+            (x0, y0, _), (x1, y1, _), (x2, y2, _) = v
+            a = abs((x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0)) / 2
+            area[i] += a; moment[i] += a * ((y0 + y1 + y2) / 3 - i * step)
+    return [dict(w=max(0.0, h - l) if h > l else 0.0, area=a, cy=m / a if a else 0.0)
+            for l, h, a, m in zip(lo, hi, area, moment)]
 
 
 async def run(cmd, timeout):

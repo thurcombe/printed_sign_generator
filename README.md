@@ -34,7 +34,8 @@ Window > Customizer. The main ones:
   measure the text, so with `round` pick a diameter and check the preview;
   the web UI works the diameter out, or shrinks the text to fit it.
 - `width`, `corner_r`, `base_t`, `raise_t`, `ring_inset`, `ring_w`,
-  `inner_pad` set the plate and border.
+  `inner_pad` set the plate and border. `content_shift` moves the content
+  and its holes up (or down when negative) for optical centring.
 - `style` is `raised` (the border, icon and text stand `raise_t` proud of
   the plate) or `flush` (they are inlaid `raise_t` deep into the plate so the
   face is flat, for a sign that sits against a window). `flush` needs
@@ -117,7 +118,10 @@ bigger to fit it, as chosen in the form; a note under the result says what it
 did. For a rectangle that means the longest line against the inner width; for
 a round sign every line, the icon and the hole bands must sit inside the inner
 circle, so lines near the top and bottom get less room than those through the
-middle. The download is only
+middle. A round sign is also balanced on the centroid of its ink rather than
+on its outline, because an icon's outline is mostly empty space above a dense
+block of text and the content looks low otherwise; the nudge field adds to
+that shift. The download is only
 enabled for the settings currently shown; changing anything marks the preview
 stale until you render again. A build plate size (default 256 x 256 mm)
 is checked against the rendered sign in both orientations and warns if it

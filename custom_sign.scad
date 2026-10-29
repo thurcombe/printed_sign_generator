@@ -60,6 +60,8 @@ ring_inset = 4.2;
 ring_w = 3.7;
 // Clearance between the ring and the content
 inner_pad = 4.0;
+// Move the content (and its holes) up (+) or down (-) by this much, for optical centring. The web UI balances a round sign on its visual weight automatically and adds this on top.
+content_shift = 0.0;
 
 /* [Mounting holes] */
 // Hole X positions (list) for the top and bottom rows. [] also gives no holes.
@@ -101,7 +103,7 @@ content_h = top_band + (show_icon ? icon_h + gap_icon_text : 0) + text_block_h +
 margin = ring_inset + ring_w + inner_pad;      // plate edge -> content
 height = is_round ? diameter : content_h + 2 * margin;
 inner_w = pw - 2 * margin;                        // inner width, or inner diameter when round
-content_top = is_round ? height / 2 + content_h / 2 : height - margin;
+content_top = (is_round ? height / 2 + content_h / 2 : height - margin) + content_shift;
 icon_y = content_top - top_band - icon_h;         // bottom of the icon
 text_top = show_icon ? icon_y - gap_icon_text : content_top - top_band;   // top of the first text line
 hole_ys = concat(

@@ -98,9 +98,12 @@ IN 0.6 SECONDS. CAN YOU?</textarea>
       <div><label>Border inset</label><input type="number" name="ring_inset" value="4.2" step="0.1" min="0"></div>
       <div><label>Border width</label><input type="number" name="ring_w" value="3.7" step="0.1" min="0"></div>
     </div>
-    <label>Padding inside border (mm)</label><input type="number" name="inner_pad" value="4" step="0.5" min="0">
+    <div class="row">
+      <div><label>Padding inside border (mm)</label><input type="number" name="inner_pad" value="4" step="0.5" min="0"></div>
+      <div><label>Nudge content up (mm, negative is down)</label><input type="number" name="content_shift" value="0" step="0.5"></div>
+    </div>
     <small class="rect-only">Height is worked out from the content.</small>
-    <small class="round-only">The diameter is checked against the content on Render: the text is shrunk or the diameter increased as chosen under Text.</small>
+    <small class="round-only">The diameter is checked against the content on Render: the text is shrunk or the diameter increased as chosen under Text. The content is balanced on its visual weight, not its outline; the nudge adds to that.</small>
   </fieldset>
 
   <fieldset><legend>Mounting holes</legend>
