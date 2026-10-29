@@ -3,7 +3,7 @@
 Stateless: each request renders into a temp directory, streams the STL back
 and deletes everything. Nothing is kept between requests.
 """
-import asyncio, json, os, re, shutil, struct, subprocess, tempfile
+import asyncio, json, math, os, re, shutil, struct, subprocess, tempfile
 from pathlib import Path
 from typing import Optional
 
@@ -102,7 +102,9 @@ async def generate(
     icon_h: float = Form(30.0),
     gap_icon_text: float = Form(3.0),
     icon_flip: bool = Form(False),
+    shape: str = Form('rectangle'),
     width: float = Form(180.0),
+    diameter: float = Form(180.0),
     corner_r: float = Form(10.8),
     style: str = Form('raised'),
     base_t: float = Form(3.0),
@@ -128,6 +130,8 @@ async def generate(
         raise HTTPException(400, 'font name has unexpected characters')
     if hole_rows not in ('none', 'top', 'bottom', 'top+bottom', 'middle'):
         raise HTTPException(400, 'hole rows must be top, bottom, top+bottom or middle')
+    if shape not in ('rectangle', 'round'):
+        raise HTTPException(400, 'shape must be rectangle or round')
     if style not in ('raised', 'flush'):
         raise HTTPException(400, 'style must be raised or flush')
     if style == 'flush' and raise_t >= base_t:
@@ -136,24 +140,9 @@ async def generate(
         raise HTTPException(400, 'fit must be shrink, widen or none')
     if csk_d and csk_d < hole_d:
         raise HTTPException(400, 'countersink diameter must be 0 or at least the hole diameter')
-    if 2 * (ring_inset + ring_w + inner_pad) >= width - 10:
-        raise HTTPException(400, 'border and padding leave no room for content')
-
-    # Fit the text: OpenSCAD cannot measure text, so measure the lines with a quick
-    # text-only render first, then shrink the size or widen the plate as asked.
     margin = ring_inset + ring_w + inner_pad
-    fit_note = ''
-    if fit != 'none':
-        widths = await measure_lines(text_lines, font, text_size)
-        widest = max(widths)
-        inner_w = width - 2 * margin
-        if widest > inner_w:
-            if fit == 'shrink':
-                text_size = round(text_size * inner_w / widest * 0.995, 2)
-                fit_note = f'text size reduced to {text_size:g} so the longest line fits'
-            else:
-                width = round(widest / 0.995 + 2 * margin, 1)
-                fit_note = f'plate widened to {width:g} mm to fit the longest line'
+    if 2 * margin >= (diameter if shape == 'round' else width) - 10:
+        raise HTTPException(400, 'border and padding leave no room for content')
 
     defs = {
         'lines': '[' + ','.join(scad_str(l) for l in text_lines) + ']',
@@ -164,7 +153,9 @@ async def generate(
         'icon_h': num('icon height', icon_h, 1, 300),
         'gap_icon_text': num('icon gap', gap_icon_text, 0, 50),
         'icon_flip': 'true' if icon_flip else 'false',
+        'shape': scad_str(shape),
         'width': num('width', width, 20, 400),
+        'diameter': num('diameter', diameter, 20, 400),
         'corner_r': num('corner radius', corner_r, 0, 50),
         'style': scad_str(style),
         'base_t': num('base thickness', base_t, 0.4, 20),
@@ -172,7 +163,7 @@ async def generate(
         'ring_inset': num('ring inset', ring_inset, 0, 30),
         'ring_w': num('ring width', ring_w, 0, 30),
         'inner_pad': num('inner padding', inner_pad, 0, 30),
-        'hole_x': parse_holes(hole_x, width),
+        'hole_x': '[]' if shape == 'round' else parse_holes(hole_x, width),
         'hole_rows': scad_str(hole_rows),
         'hole_d': num('hole diameter', hole_d, 0.5, 20),
         'csk_d': num('countersink diameter', csk_d, 0, 30),
@@ -206,6 +197,47 @@ async def generate(
         else:
             shutil.copy(DEFAULT_ICON, icon_path)
         defs['icon_file'] = scad_str(str(icon_path))
+
+        # Fit the text: OpenSCAD cannot measure text, so measure the lines (and the
+        # icon) with a quick flat render first, then shrink the text or enlarge the
+        # plate as asked.
+        fit_note = ''
+        if fit != 'none':
+            widths = await measure_lines(text_lines, font, text_size, icon_path if show_icon else None, icon_h)
+            icon_w = widths.pop() if show_icon else 0.0
+            if shape == 'round':
+                layout = dict(n=len(text_lines), line_gap=line_gap, hole_rows=hole_rows, hole_d=hole_d, csk_d=csk_d,
+                              gap_icon_text=gap_icon_text, icon_h=icon_h if show_icon else None, icon_w=icon_w)
+                need = 2 * (round_content_radius(text_size, widths, **layout) + margin)
+                if need > diameter:
+                    if fit == 'shrink':
+                        # Text width scales with text size; bands and the icon do not, so search.
+                        lo, hi = 0.5, text_size
+                        if 2 * (round_content_radius(lo, [w * lo / text_size for w in widths], **layout) + margin) > diameter:
+                            raise HTTPException(400, f'the icon and holes alone need a diameter of about {need:.0f} mm')
+                        for _ in range(40):
+                            mid = (lo + hi) / 2
+                            r = round_content_radius(mid, [w * mid / text_size for w in widths], **layout)
+                            if 2 * (r + margin) > diameter * 0.995: hi = mid
+                            else: lo = mid
+                        text_size = round(lo, 2)
+                        fit_note = f'text size reduced to {text_size:g} so the content fits the circle'
+                    else:
+                        diameter = round(need / 0.995 + 0.05, 1)
+                        fit_note = f'diameter increased to {diameter:g} mm to fit the content'
+            else:
+                widest = max(widths)
+                inner_w = width - 2 * margin
+                if widest > inner_w:
+                    if fit == 'shrink':
+                        text_size = round(text_size * inner_w / widest * 0.995, 2)
+                        fit_note = f'text size reduced to {text_size:g} so the longest line fits'
+                    else:
+                        width = round(widest / 0.995 + 2 * margin, 1)
+                        fit_note = f'plate widened to {width:g} mm to fit the longest line'
+            defs['text_size'] = num('text size', text_size, 1, 100)
+            defs['width'] = num('width', width, 20, 400)
+            defs['diameter'] = num('diameter', diameter, 20, 400)
 
         async def render(part):
             out = work / f'{part}.stl'
@@ -245,6 +277,30 @@ async def generate(
         shutil.rmtree(work, ignore_errors=True)
 
 
+def round_content_radius(text_size, widths, n, line_gap, hole_rows, hole_d, csk_d, gap_icon_text, icon_h, icon_w):
+    """Radius of the smallest circle around the content of a round sign, laid out
+    exactly as custom_sign.scad does it (hole bands, icon, text lines, centred)."""
+    cap_h = text_size * 1.024
+    band_h = max(hole_d, csk_d) + 2
+    want_top = hole_rows in ('top', 'top+bottom')
+    want_bot = hole_rows in ('bottom', 'top+bottom')
+    top_band = band_h + gap_icon_text if want_top else 0
+    bot_band = band_h + line_gap if want_bot else 0
+    content_h = top_band + (icon_h + gap_icon_text if icon_h else 0) + n * cap_h + max(0, n - 1) * line_gap + bot_band
+    top = content_h / 2
+    boxes = []                                    # (width, y_top, y_bottom) relative to the centre
+    if want_top:
+        boxes.append((max(hole_d, csk_d), top, top - band_h))
+    y = top - top_band
+    if icon_h:
+        boxes.append((icon_w, y, y - icon_h)); y -= icon_h + gap_icon_text
+    for w in widths:
+        boxes.append((w, y, y - cap_h)); y -= cap_h + line_gap
+    if want_bot:
+        boxes.append((max(hole_d, csk_d), -top + band_h, -top))
+    return max(math.hypot(w / 2, max(abs(y1), abs(y2))) for w, y1, y2 in boxes)
+
+
 def join_stl(a: bytes, b: bytes):
     """Concatenate two binary STLs into one with two shells. Returns the file and
     the index of the first triangle that came from the second file."""
@@ -254,12 +310,16 @@ def join_stl(a: bytes, b: bytes):
     return b'custom_sign'.ljust(80, b'\0') + struct.pack('<I', na + nb) + body, na
 
 
-async def measure_lines(lines, font, text_size):
+async def measure_lines(lines, font, text_size, icon=None, icon_h=0.0):
     """Width in mm of each text line as OpenSCAD will render it: extrude every line
-    at a known y offset, export binary STL, and read the x extent per band."""
+    at a known y offset, export binary STL, and read the x extent per band. With an
+    icon, its width at icon_h tall is appended."""
     step = 1000.0
     scad = ''.join(f'translate([0, {i * step}]) linear_extrude(1) text({scad_str(l)}, size={text_size!r}, font={scad_str(font)}, halign="left", valign="baseline", $fn=16);\n'
                    for i, l in enumerate(lines))
+    if icon is not None:
+        scad += f'translate([0, {len(lines) * step}]) linear_extrude(1) resize([0, {icon_h!r}], auto=true) import({scad_str(str(icon))}, center=true);\n'
+        lines = list(lines) + ['']
     work = Path(tempfile.mkdtemp(prefix='measure-'))
     try:
         src, out = work / 'm.scad', work / 'm.stl'

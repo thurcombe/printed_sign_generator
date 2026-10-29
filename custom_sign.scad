@@ -40,9 +40,13 @@ gap_icon_text = 3.0;
 icon_flip = false;
 
 /* [Plate] */
-// Overall width. Height is worked out from the content.
+// "rectangle": width is set, height follows the content. "round": a disc of the given diameter with the content centred (hole_x is ignored; holes go top and bottom centre, or in side tabs).
+shape = "rectangle"; // [rectangle, round]
+// Overall width of a rectangle. Height is worked out from the content.
 width = 180.0;
-// Outer corner radius
+// Diameter of a round sign. Must be big enough for the content; the web UI works this out, here check the preview.
+diameter = 180.0;
+// Outer corner radius of a rectangle
 corner_r = 10.8;
 // "raised": the border, icon and text stand proud of the plate. "flush": they are inlaid into the plate so the face is flat, for a sign that sits against a window (needs a multi-material print; export base and raised separately).
 style = "raised"; // [raised, flush]
@@ -79,33 +83,37 @@ $fn = 64;
 n_lines = len(lines);
 cap_h = text_size * cap_ratio;
 text_block_h = n_lines * cap_h + max(0, n_lines - 1) * line_gap;
-has_holes = len(hole_x) > 0;
+is_round = shape == "round";
+pw = is_round ? diameter : width;                    // plate width
+has_holes = is_round || len(hole_x) > 0;
 want_top = has_holes && (hole_rows == "top" || hole_rows == "top+bottom");
 want_bot = has_holes && (hole_rows == "bottom" || hole_rows == "top+bottom");
 want_tabs = hole_rows == "middle";
 tab_r = max(hole_d, csk_d) / 2 + tab_pad;         // radius of a side tab; its hole sits at its centre
 tab_w = want_tabs ? 2 * tab_r : 0;                // how far each tab sticks out
-overall_w = width + 2 * tab_w;
+overall_w = pw + 2 * tab_w;
 band_h = max(hole_d, csk_d) + 2;                  // height reserved for a hole row
 // Top holes sit beside the icon when there is one, so they only need a band of their own without it.
-top_band = (want_top && !show_icon) ? band_h + gap_icon_text : 0;
+// On a round sign the hole is a single one at the centre, so it always has its own band.
+top_band = (want_top && (is_round || !show_icon)) ? band_h + gap_icon_text : 0;
 bot_band = want_bot ? band_h + line_gap : 0;
 content_h = top_band + (show_icon ? icon_h + gap_icon_text : 0) + text_block_h + bot_band;
 margin = ring_inset + ring_w + inner_pad;      // plate edge -> content
-height = content_h + 2 * margin;
-inner_w = width - 2 * margin;
-content_top = height - margin;
+height = is_round ? diameter : content_h + 2 * margin;
+inner_w = pw - 2 * margin;                        // inner width, or inner diameter when round
+content_top = is_round ? height / 2 + content_h / 2 : height - margin;
 icon_y = content_top - top_band - icon_h;         // bottom of the icon
 text_top = show_icon ? icon_y - gap_icon_text : content_top - top_band;   // top of the first text line
 hole_ys = concat(
-    want_top ? [show_icon ? content_top - icon_h / 2 : content_top - band_h / 2] : [],
-    want_bot ? [margin + band_h / 2] : []);
+    want_top ? [(show_icon && !is_round) ? content_top - icon_h / 2 : content_top - band_h / 2] : [],
+    want_bot ? [content_top - content_h + band_h / 2] : []);
+hole_xs = is_round ? [pw / 2] : hole_x;
 // Every hole as [x, y]
-hole_pts = want_tabs ? [[-tab_r, height / 2], [width + tab_r, height / 2]]
-                     : [for (x = hole_x, y = hole_ys) [x, y]];
+hole_pts = want_tabs ? [[-tab_r, height / 2], [pw + tab_r, height / 2]]
+                     : [for (x = hole_xs, y = hole_ys) [x, y]];
 eps = 0.01;
 
-echo(str("plate ", overall_w, " x ", height, " mm, inner width ", inner_w, " mm"));
+echo(str("plate ", overall_w, " x ", height, " mm, inner ", is_round ? "diameter " : "width ", inner_w, " mm"));
 
 // ------------------------------------------------------------------
 // Icon from the SVG, scaled to h tall and centred on the origin.
@@ -118,19 +126,27 @@ module rrect(w, h, r) {
     offset(r = r) offset(delta = -r) square([w, h]);
 }
 
+// Plate outline inset by d from the edge: rounded rectangle or disc.
+module outline_2d(d = 0) {
+    if (is_round)
+        translate([pw / 2, height / 2]) circle(d = diameter - 2 * d);
+    else
+        translate([d, d]) rrect(pw - 2 * d, height - 2 * d, corner_r - d);
+}
+
 // Rounded mounting tab on one side, blended into the plate edge. side = -1 left, +1 right.
 module tab_2d(side) {
-    cx = side < 0 ? -tab_r : width + tab_r;
+    cx = side < 0 ? -tab_r : pw + tab_r;
     hull() {
         translate([cx, height / 2]) circle(r = tab_r);
-        translate([side < 0 ? 0 : width - 1, height / 2 - tab_r]) square([1, 2 * tab_r]);
+        translate([side < 0 ? 0 : pw - 1, height / 2 - tab_r]) square([1, 2 * tab_r]);
     }
 }
 
 module plate_2d() {
     difference() {
         union() {
-            rrect(width, height, corner_r);
+            outline_2d();
             if (want_tabs) { tab_2d(-1); tab_2d(1); }
         }
         for (p = hole_pts) translate(p) circle(d = hole_d);
@@ -139,18 +155,15 @@ module plate_2d() {
 
 module ring_2d() {
     difference() {
-        translate([ring_inset, ring_inset])
-            rrect(width - 2 * ring_inset, height - 2 * ring_inset, corner_r - ring_inset);
-        translate([ring_inset + ring_w, ring_inset + ring_w])
-            rrect(width - 2 * (ring_inset + ring_w), height - 2 * (ring_inset + ring_w),
-                  corner_r - ring_inset - ring_w);
+        outline_2d(ring_inset);
+        outline_2d(ring_inset + ring_w);
     }
 }
 
 module text_2d() {
     for (i = [0 : n_lines - 1]) {
         baseline = text_top - cap_h - i * (cap_h + line_gap);
-        translate([width / 2, baseline])
+        translate([pw / 2, baseline])
             text(lines[i], size = text_size, font = font, halign = "center", valign = "baseline");
     }
 }
@@ -158,7 +171,7 @@ module text_2d() {
 module raised_2d() {
     ring_2d();
     if (show_icon)
-        translate([width / 2, icon_y + icon_h / 2])
+        translate([pw / 2, icon_y + icon_h / 2])
             mirror([icon_flip ? 1 : 0, 0]) icon_2d();
     text_2d();
 }

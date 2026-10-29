@@ -43,6 +43,16 @@ function markStale() {
 form.addEventListener('input', markStale);
 form.addEventListener('change', markStale);
 
+// Show only the fields that apply to the chosen shape.
+const shapeSel = form.elements.shape;
+function applyShape() {
+  const round = shapeSel.value === 'round';
+  document.querySelectorAll('.rect-only').forEach(el => { el.style.display = round ? 'none' : ''; });
+  document.querySelectorAll('.round-only').forEach(el => { el.style.display = round ? '' : 'none'; });
+}
+shapeSel.addEventListener('change', applyShape);
+applyShape();
+
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   go.disabled = true;

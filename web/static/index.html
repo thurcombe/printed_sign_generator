@@ -57,10 +57,10 @@ IN 0.6 SECONDS. CAN YOU?</textarea>
       <div><label>Text size</label><input type="number" name="text_size" value="10.35" step="0.05" min="1"></div>
       <div><label>Line gap (mm)</label><input type="number" name="line_gap" value="3" step="0.5" min="0"></div>
     </div>
-    <label>If a line is too wide for the sign</label>
+    <label>If the text is too big for the sign</label>
     <select name="fit">
-      <option value="shrink" selected>Shrink the text so the longest line fits</option>
-      <option value="widen">Widen the sign to fit the longest line</option>
+      <option value="shrink" selected>Shrink the text so it fits</option>
+      <option value="widen">Make the sign bigger (wider, or a larger diameter) so it fits</option>
       <option value="none">Do nothing (text may run into the border)</option>
     </select>
   </fieldset>
@@ -79,26 +79,36 @@ IN 0.6 SECONDS. CAN YOU?</textarea>
   </fieldset>
 
   <fieldset><legend>Plate</legend>
+    <label>Shape</label>
+    <select name="shape">
+      <option value="rectangle" selected>Rectangle: set the width, height follows the content</option>
+      <option value="round">Round: a disc, content centred</option>
+    </select>
     <label>Style</label>
     <select name="style">
       <option value="raised" selected>Raised: border, icon and text stand proud of the plate</option>
       <option value="flush">Flush, for a window: inlaid into the plate so the face is flat (multi-material print)</option>
     </select>
     <div class="row3">
-      <div><label>Width (mm)</label><input type="number" name="width" value="180" step="1" min="20"></div>
-      <div><label>Corner radius</label><input type="number" name="corner_r" value="10.8" step="0.1" min="0"></div>
+      <div class="rect-only"><label>Width (mm)</label><input type="number" name="width" value="180" step="1" min="20"></div>
+      <div class="round-only"><label>Diameter (mm)</label><input type="number" name="diameter" value="180" step="1" min="20"></div>
+      <div class="rect-only"><label>Corner radius</label><input type="number" name="corner_r" value="10.8" step="0.1" min="0"></div>
       <div><label>Base thickness</label><input type="number" name="base_t" value="3" step="0.2" min="0.4"></div>
       <div><label>Raised height / inlay depth</label><input type="number" name="raise_t" value="1" step="0.2" min="0.2"></div>
       <div><label>Border inset</label><input type="number" name="ring_inset" value="4.2" step="0.1" min="0"></div>
       <div><label>Border width</label><input type="number" name="ring_w" value="3.7" step="0.1" min="0"></div>
     </div>
     <label>Padding inside border (mm)</label><input type="number" name="inner_pad" value="4" step="0.5" min="0">
-    <small>Height is worked out from the content.</small>
+    <small class="rect-only">Height is worked out from the content.</small>
+    <small class="round-only">The diameter is checked against the content on Render: the text is shrunk or the diameter increased as chosen under Text.</small>
   </fieldset>
 
   <fieldset><legend>Mounting holes</legend>
-    <label>Hole X positions (mm from left, comma separated; empty for none)</label>
-    <input type="text" name="hole_x" value="24, 156">
+    <div class="rect-only">
+      <label>Hole X positions (mm from left, comma separated; empty for none)</label>
+      <input type="text" name="hole_x" value="24, 156">
+    </div>
+    <small class="round-only">A round sign gets one hole at the top and/or bottom centre, or side tabs.</small>
     <label>Hole rows</label>
     <select name="hole_rows">
       <option value="none">None</option>

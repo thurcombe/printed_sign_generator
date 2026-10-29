@@ -29,6 +29,10 @@ Window > Customizer. The main ones:
   for you (see below).
 - `font` is a fontconfig name. `fc-list` shows what is installed.
 - `show_icon`, `icon_h`, `icon_flip` control the icon.
+- `shape` is `rectangle` (set `width`, the height follows the content) or
+  `round` (a disc of `diameter` with the content centred). OpenSCAD cannot
+  measure the text, so with `round` pick a diameter and check the preview;
+  the web UI works the diameter out, or shrinks the text to fit it.
 - `width`, `corner_r`, `base_t`, `raise_t`, `ring_inset`, `ring_w`,
   `inner_pad` set the plate and border.
 - `style` is `raised` (the border, icon and text stand `raise_t` proud of
@@ -41,7 +45,9 @@ Window > Customizer. The main ones:
   at the bottom in a band below the text, both (for tall signs), or
   `middle`: one hole in a rounded tab on each outer side of the sign at
   mid-height, clear of the content. `tab_pad` sets the material around a
-  tab's hole. The echoed plate size includes the tabs.
+  tab's hole. The echoed plate size includes the tabs. On a round sign
+  `hole_x` is ignored: the top and bottom rows are a single hole each on the
+  centre line, in a band above or below the content.
 
 ## Changing the icon
 
@@ -106,9 +112,12 @@ STL holds two shells, plate and inlay; in the slicer split the object into
 parts (Bambu Studio and OrcaSlicer: right click, Split to parts; PrusaSlicer:
 Split to parts) and assign a filament to each. Because OpenSCAD cannot
 measure text, the app first renders the text lines on their own to measure
-them, then either shrinks the text size so the longest line fits or widens
-the sign to fit it, as chosen in the form; a note under the result says what
-it did. The download is only
+them (and the icon), then either shrinks the text so it fits or makes the sign
+bigger to fit it, as chosen in the form; a note under the result says what it
+did. For a rectangle that means the longest line against the inner width; for
+a round sign every line, the icon and the hole bands must sit inside the inner
+circle, so lines near the top and bottom get less room than those through the
+middle. The download is only
 enabled for the settings currently shown; changing anything marks the preview
 stale until you render again. A build plate size (default 256 x 256 mm)
 is checked against the rendered sign in both orientations and warns if it
